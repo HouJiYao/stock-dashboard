@@ -3,7 +3,10 @@ import fs from "node:fs";
 const SITE = process.env.SITE_URL;
 const SLOW = process.env.SLOW === "true";
 const KEY = process.env.GEMINI_API_KEY;
-const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+const MODEL = process.env.GEMINI_MODEL || "gemini-3.8-flash";
+const GEMINI_DELAY_MS = Number(process.env.GEMINI_DELAY_MS || 8000);
+const MAX_RETRIES = Number(process.env.GEMINI_MAX_RETRIES || 4);
+
 const SECTORS = JSON.parse(fs.readFileSync("stocks.json", "utf8"));
 const ALL = [...new Map(SECTORS.flatMap((x) => [...x.stocks, ...(x.etfs || [])]).map((x) => [x.s, x])).values()];
 const UA = { "User-Agent": "Mozilla/5.0" };
@@ -107,26 +110,63 @@ if (KEY) {
     const q = quotes[st.s], f = fundamentals[st.s] || {};
     const heads = (f.news || []).map((n) => "- " + n.title).join("\n") || "（無）";
     const recent = (q?.series || []).filter((_, i) => i % 5 === 0).map((x) => x.p).slice(-30).join(", ");
-    const prompt = st.e ? `請以繁體中文，為台股 ETF「${st.n}（${st.s}）」寫約150字的當前分析。最新價 ${q?.price}，漲跌幅 ${q?.pct?.toFixed(2)}%，近期價格序列：${recent}。近期新聞標題：\n${heads}\n` +
-      `內容含：追蹤主題與主要成分重點、走勢觀察、新聞重點、適合的配置角色、需留意的風險。成分股與規模若不確定請說明不確定，不要編造數字，結尾註明僅供參考、非投資建議。` :
-      `請以繁體中文，為台股「${st.n}（${st.s}）」寫約150字的當前分析。最新價 ${q?.price}，漲跌幅 ${q?.pct?.toFixed(2)}%，近期價格序列：${recent}。` +
-      `基本面：本益比 ${f.pe ?? "無資料"}、股價淨值比 ${f.pb ?? "無資料"}、殖利率 ${f.yield ?? "無資料"}%。近期新聞標題：\n${heads}\n` +
-      `內容含：走勢觀察、基本面評價、新聞重點、產業地位、需留意的風險。只依據提供的數據、標題與一般知識，標題以外的新聞細節不要編造，結尾註明僅供參考、非投資建議。`;
-    for (let attempt = 0; attempt < 2; attempt++) {
+    const prompt = st.e
+      ? `請以繁體中文，為台股 ETF「${st.n}（${st.s}）」寫約150字的當前分析。最新價 ${q?.price}，漲跌幅 ${q?.pct?.toFixed(2)}%，近期價格序列：${recent}。近期新聞標題：\n${heads}\n` +
+        `內容含：追蹤主題與主要成分重點、走勢觀察、新聞重點、適合的配置角色、需留意的風險。成分股與規模若不確定請說明不確定，不要編造數字，結尾註明僅供參考、非投資建議。`
+      : `請以繁體中文，為台股「${st.n}（${st.s}）」寫約150字的當前分析。最新價 ${q?.price}，漲跌幅 ${q?.pct?.toFixed(2)}%，近期價格序列：${recent}。` +
+        `基本面：本益比 ${f.pe ?? "無資料"}、股價淨值比 ${f.pb ?? "無資料"}、殖利率 ${f.yield ?? "無資料"}%。近期新聞標題：\n${heads}\n` +
+        `內容含：走勢觀察、基本面評價、新聞重點、產業地位、需留意的風險。只依據提供的數據、標題與一般知識，標題以外的新聞細節不要編造，結尾註明僅供參考、非投資建議。`;
+
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
-        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${KEY}`, {
-          method: "POST", headers: { "content-type": "application/json" },
-          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
-        });
-        if (res.status === 429) { await sleep(30000); continue; }
-        const j = await res.json();
-        const text = j.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("");
-        if (text) analysis[st.s] = { text, updated: now };
-        else console.error("gemini empty", st.s, JSON.stringify(j).slice(0, 200));
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${KEY}`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+          }
+        );
+
+        const j = await res.json().catch(() => ({}));
+
+        // 遇到 429 或 503：採指數退避 + 隨機抖動後重試
+        if (res.status === 429 || res.status === 503) {
+          if (attempt === MAX_RETRIES) {
+            console.error(`gemini rate/server limit exhausted ${st.s} (${res.status}):`, j.error?.message || "");
+            break;
+          }
+          const backoffMs = Math.min(180000, 35000 * (2 ** attempt)) + Math.floor(Math.random() * 4000);
+          console.warn(`gemini ${res.status} on ${st.s}, retry ${attempt + 1}/${MAX_RETRIES} in ${Math.round(backoffMs / 1000)}s`);
+          await sleep(backoffMs);
+          continue;
+        }
+
+        // 其他非 2xx 錯誤（如 400 / 401 / 403 / 404）：多半重試無效，直接跳出
+        if (!res.ok || j.error) {
+          console.error(`gemini api error ${st.s} (${res.status}):`, j.error?.message || JSON.stringify(j).slice(0, 200));
+          break;
+        }
+
+        const text = j.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") || "";
+        if (text) {
+          analysis[st.s] = { text, updated: now };
+        } else {
+          console.error("gemini empty", st.s, JSON.stringify(j).slice(0, 200));
+        }
         break;
-      } catch (e) { console.error("gemini", st.s, e.message); break; }
+      } catch (e) {
+        if (attempt === MAX_RETRIES) {
+          console.error("gemini network error", st.s, e.message);
+          break;
+        }
+        const retryMs = 10000 * (attempt + 1);
+        console.warn(`gemini fetch error on ${st.s}, retry ${attempt + 1}/${MAX_RETRIES} in ${retryMs / 1000}s:`, e.message);
+        await sleep(retryMs);
+      }
     }
-    await sleep(5000);
+
+    await sleep(GEMINI_DELAY_MS);
   }
 }
 
