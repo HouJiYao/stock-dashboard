@@ -1,0 +1,33 @@
+name: update-data
+on:
+  schedule:
+    - cron: "30 0 * * 1-5"      # 台北 08:30：新聞、基本面、AI 分析
+    - cron: "*/10 1-5 * * 1-5"  # 台北 09:00–13:59：每 10 分鐘更新報價
+    - cron: "0 6 * * 1-5"       # 台北 14:00：收盤價
+  workflow_dispatch:
+    inputs:
+      slow:
+        description: "重新抓新聞、基本面並產生 AI 分析"
+        default: "true"
+concurrency:
+  group: update-data
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: node scripts/update.mjs
+        env:
+          SITE_URL: https://stock-dashboard-a2324.web.app
+          SLOW: ${{ github.event.schedule == '30 0 * * 1-5' || inputs.slow == 'true' }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      - uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_STOCK_DASHBOARD_A2324 }}
+          projectId: stock-dashboard-a2324
+          channelId: live

@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>產業龍頭股價儀表板</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500&family=Noto+Serif+TC:wght@500;600&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{--bg:#ece7de;--card:#f8f5ee;--ink:#2a2622;--mute:#7d7468;--line:#d9d1c3;--up:#b5483f;--down:#3f7a68;--acc:#7a6339;--shadow:none;color-scheme:light}
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.8 "Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+h1,h2,h3,.price,.top b{font-family:"Noto Serif TC","Songti TC",serif;font-weight:500}
+header{padding:36px 24px 14px;max-width:1000px;margin:auto;display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px}
+h1{font-size:28px;margin:0;letter-spacing:.12em}
+#stamp{color:var(--mute);font-size:12.5px}
+.banner{max-width:1000px;margin:0 auto 4px;padding:0 24px;color:var(--mute);font-size:12.5px}
+nav{max-width:1000px;margin:auto;padding:12px 24px 0;display:flex;gap:26px;overflow-x:auto}
+nav button{border:0;border-bottom:2px solid transparent;background:none;color:var(--mute);padding:6px 2px;cursor:pointer;white-space:nowrap;font:inherit;letter-spacing:.08em}
+nav button:hover{color:var(--ink)}
+nav button[aria-pressed=true]{color:var(--ink);border-bottom-color:var(--acc)}
+main{max-width:1000px;margin:auto;padding:20px 24px 56px;display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px 22px 16px;cursor:pointer;text-align:left;color:inherit;font:inherit;transition:border-color .2s}
+.card:hover{border-color:var(--acc)}
+.card:focus-visible,nav button:focus-visible{outline:2px solid var(--acc);outline-offset:3px}
+.card.on{border-color:var(--acc)}
+.top{display:flex;justify-content:space-between;align-items:baseline}
+.top b{font-size:17px;letter-spacing:.05em}
+.sym{color:var(--mute);font-size:12.5px}
+.price{font-size:32px;line-height:1.3;margin-top:10px;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.chg,.card>div:nth-child(3){font-variant-numeric:tabular-nums;font-size:14px}
+.up{color:var(--up)}.down{color:var(--down)}
+.spark{height:64px;margin-top:10px}
+svg{width:100%;height:100%;display:block}
+svg line{stroke-dasharray:2 6}
+#panel{grid-column:1/-1;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:30px}
+#panel h2{margin:0 0 14px;font-size:22px;letter-spacing:.06em}
+#panel p{max-width:42em}
+.big{height:220px}
+.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:4px 24px;margin:22px 0}
+.kv div{border-top:1px solid var(--line);padding:10px 0 4px}.kv span{display:block;color:var(--mute);font-size:12.5px}.kv b{font-family:"Noto Serif TC",serif;font-weight:500;font-size:18px;font-variant-numeric:tabular-nums}
+.news{list-style:none;padding:0;margin:10px 0}.news li{padding:10px 0;border-top:1px solid var(--line)}.news a{color:var(--ink);text-decoration:none;border-bottom:1px solid var(--acc)}.news a:hover{color:var(--acc)}.news small{color:var(--mute)}
+h3{font-size:16px;margin:26px 0 0;letter-spacing:.06em}
+.note{color:var(--mute);font-size:12.5px;margin:18px 0 0}
+.empty{color:var(--mute);padding:40px 0;text-align:center;grid-column:1/-1}
+</style>
+</head>
+<body>
+<header><h1>產業龍頭股價儀表板</h1><span id="stamp"></span></header>
+<nav id="tabs" aria-label="產業"></nav>
+<main id="grid"></main>
+<script>
+let D=null,sector=0,pick=null,charts=[];
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const big=n=>n==null?"–":n>=1e12?(n/1e12).toFixed(2)+" 兆":n>=1e8?(n/1e8).toFixed(0)+" 億":fmt(n);
+const fmt=n=>n==null?"–":Number(n).toLocaleString("en-US",{maximumFractionDigits:2});
+// 配色採台股慣例：紅漲綠跌（美股亦同，以求一致）
+async function load(){
+  try{D=await (await fetch("/data.json?t="+Date.now())).json();render();}
+  catch(e){document.getElementById("grid").innerHTML='<p class="empty">無法取得資料，請稍後重新整理。</p>';}
+}
+function line(box,series,up,full){
+  const cv=document.createElement("canvas");box.append(cv);
+  const c=getComputedStyle(document.documentElement).getPropertyValue(up?"--up":"--down").trim();
+  charts.push(new Chart(cv,{type:"line",
+    data:{labels:series.map(x=>new Date(x.t).toLocaleString("zh-TW",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})),
+      datasets:[{data:series.map(x=>x.p),borderColor:c,borderWidth:1.75,pointRadius:0,tension:.25,fill:true,backgroundColor:c+"17"}]},
+    options:{animation:false,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{enabled:full}},
+      scales:{x:{display:full,ticks:{maxTicksLimit:6}},y:{display:full}}}}));
+}
+function render(){
+  charts.forEach(c=>c.destroy());charts=[];
+  const tabs=document.getElementById("tabs");
+  tabs.innerHTML=D.sectors.map((s,i)=>`<button aria-pressed="${i==sector}" data-i="${i}">${s.name}</button>`).join("");
+  tabs.querySelectorAll("button").forEach(b=>b.onclick=()=>{sector=+b.dataset.i;pick=null;render()});
+  const g=document.getElementById("grid");g.innerHTML="";
+  const list=D.sectors[sector].stocks;
+  let latest=0;
+  list.forEach(st=>{
+    const q=D.quotes[st.s];
+    const b=document.createElement("button");b.className="card"+(pick==st.s?" on":"");
+    if(!q){b.innerHTML=`<div class="top"><b>${st.n}</b><span class="sym">${st.s}</span></div><p class="note">等待首次更新資料…</p>`;g.append(b);return;}
+    latest=Math.max(latest,q.updated);
+    const up=q.change>=0;
+    b.innerHTML=`<div class="top"><b>${st.n}</b><span class="sym">${st.s}・${st.m=="US"?"美股":"台股"}</span></div>
+      <div class="price">${fmt(q.price)}</div>
+      <div class="chg ${up?"up":"down"}">${up?"▲":"▼"} ${fmt(Math.abs(q.change))}（${fmt(q.pct)}%）</div><div class="sym">本益比 ${fmt(D.fundamentals?.[st.s]?.pe)}・殖利率 ${fmt(D.fundamentals?.[st.s]?.yield)}%</div><div class="spark"></div>`;
+    b.onclick=()=>{pick=st.s;render();document.getElementById("panel")?.scrollIntoView({behavior:"smooth"})};
+    g.append(b);line(b.querySelector(".spark"),q.series,up,false);
+  });
+  if(pick){
+    const st=list.find(x=>x.s==pick),q=D.quotes[pick],a=D.analysis[pick],f=D.fundamentals?.[pick]||{};
+    const kv=[["本益比",fmt(f.pe)],["股價淨值比",fmt(f.pb)],["殖利率",f.yield==null?"–":fmt(f.yield)+"%"],["市值（TWD）",big(f.mcap)],["今日最高",fmt(q?.hi)],["今日最低",fmt(q?.lo)]]
+      .map(([k,v])=>`<div><span>${k}</span><b>${v}</b></div>`).join("");
+    const news=(f.news||[]).map(n=>`<li><a href="${esc(n.url)}" target="_blank" rel="noopener noreferrer">${esc(n.title)}</a><br><small>${esc(n.src)}${n.t?"・"+new Date(n.t).toLocaleDateString("zh-TW"):""}</small></li>`).join("")||"<li>暫無新聞資料</li>";
+    const p=document.createElement("section");p.id="panel";
+    p.innerHTML=`<h2>${st.n}（${st.s}）分析</h2><div class="big" style="height:220px"></div><div class="kv">${kv}</div>
+      <p>${a?a.text.replace(/</g,"&lt;").replace(/\n/g,"<br>"):"今日分析尚未產生，將於下個交易日早上 8:30 更新。"}</p>
+      <h3>近期新聞</h3><ul class="news">${news}</ul>
+      <p class="note">${a?"分析更新於 "+new Date(a.updated).toLocaleString("zh-TW")+"。":""}AI 生成內容僅供參考，不構成投資建議。</p>`;
+    g.append(p);if(q)line(p.querySelector(".big"),q.series,q.change>=0,true);
+  }
+  document.getElementById("stamp").textContent=latest?"報價更新："+new Date(latest).toLocaleTimeString("zh-TW")+"（免費資料，可能延遲數分鐘）":"";
+}
+load();setInterval(load,60000);
+</script>
+</body>
+</html>
