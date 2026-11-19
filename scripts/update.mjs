@@ -5,7 +5,7 @@ const SLOW = process.env.SLOW === "true";
 const KEY = process.env.GEMINI_API_KEY;
 const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const SECTORS = JSON.parse(fs.readFileSync("stocks.json", "utf8"));
-const ALL = SECTORS.flatMap((x) => x.stocks);
+const ALL = [...new Map(SECTORS.flatMap((x) => [...x.stocks, ...(x.etfs || [])]).map((x) => [x.s, x])).values()];
 const UA = { "User-Agent": "Mozilla/5.0" };
 const num = (v) => { const n = parseFloat(String(v ?? "").replace(/,/g, "")); return Number.isFinite(n) ? n : null; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -28,7 +28,7 @@ async function quotesMIS() {
   for (const m of d.msgArray || []) {
     const y = num(m.y); if (y == null) continue;
     const last = num(m.z) ?? y;
-    out[m.c] = { price: last, change: last - y, pct: ((last - y) / y) * 100, hi: num(m.h), lo: num(m.l) };
+    out[m.c] = { price: last, prev: y, change: last - y, pct: ((last - y) / y) * 100, hi: num(m.h), lo: num(m.l) };
   }
   return out;
 }
@@ -41,7 +41,7 @@ async function quotesDayClose() {
     const r = m[s]; const price = num(r?.ClosingPrice), ch = num(r?.Change);
     if (price == null || ch == null) continue;
     const y = price - ch;
-    out[s] = { price, change: ch, pct: y ? (ch / y) * 100 : 0, hi: num(r.HighestPrice), lo: num(r.LowestPrice) };
+    out[s] = { price, prev: y, change: ch, pct: y ? (ch / y) * 100 : 0, hi: num(r.HighestPrice), lo: num(r.LowestPrice) };
   }
   return out;
 }
@@ -83,6 +83,12 @@ async function news(st) {
 }
 for (const st of ALL) {
   if (!need(st.s)) continue;
+  if (st.e) {
+    let items = fundamentals[st.s]?.news || [];
+    try { items = await news(st); } catch (e) { console.error("news", st.s, e.message); }
+    fundamentals[st.s] = { news: items, updated: now };
+    continue;
+  }
   const r = bw.find((x) => x.Code === st.s) || {};
   const c = co.find((x) => x["公司代號"] === st.s) || {};
   const shares = num(c["已發行普通股數或TDR原股發行股數"]);
@@ -101,7 +107,9 @@ if (KEY) {
     const q = quotes[st.s], f = fundamentals[st.s] || {};
     const heads = (f.news || []).map((n) => "- " + n.title).join("\n") || "（無）";
     const recent = (q?.series || []).filter((_, i) => i % 5 === 0).map((x) => x.p).slice(-30).join(", ");
-    const prompt = `請以繁體中文，為台股「${st.n}（${st.s}）」寫約150字的當前分析。最新價 ${q?.price}，漲跌幅 ${q?.pct?.toFixed(2)}%，近期價格序列：${recent}。` +
+    const prompt = st.e ? `請以繁體中文，為台股 ETF「${st.n}（${st.s}）」寫約150字的當前分析。最新價 ${q?.price}，漲跌幅 ${q?.pct?.toFixed(2)}%，近期價格序列：${recent}。近期新聞標題：\n${heads}\n` +
+      `內容含：追蹤主題與主要成分重點、走勢觀察、新聞重點、適合的配置角色、需留意的風險。成分股與規模若不確定請說明不確定，不要編造數字，結尾註明僅供參考、非投資建議。` :
+      `請以繁體中文，為台股「${st.n}（${st.s}）」寫約150字的當前分析。最新價 ${q?.price}，漲跌幅 ${q?.pct?.toFixed(2)}%，近期價格序列：${recent}。` +
       `基本面：本益比 ${f.pe ?? "無資料"}、股價淨值比 ${f.pb ?? "無資料"}、殖利率 ${f.yield ?? "無資料"}%。近期新聞標題：\n${heads}\n` +
       `內容含：走勢觀察、基本面評價、新聞重點、產業地位、需留意的風險。只依據提供的數據、標題與一般知識，標題以外的新聞細節不要編造，結尾註明僅供參考、非投資建議。`;
     for (let attempt = 0; attempt < 2; attempt++) {
