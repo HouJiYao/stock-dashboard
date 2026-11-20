@@ -11,8 +11,11 @@ const SITE = process.env.SITE_URL;
 const SLOW = process.env.SLOW === "true";
 const KEY = process.env.GEMINI_API_KEY;
 let MODEL = process.env.GEMINI_MODEL || "gemini-3.8-flash";
-const SECTORS = JSON.parse(fs.readFileSync("stocks.json", "utf8"));
-const ALL = [...new Map(SECTORS.flatMap((x) => [...x.stocks, ...(x.etfs || [])]).map((x) => [x.s, x])).values()];
+let SECTORS = [];
+let ALL = [];
+const CFG = JSON.parse(fs.readFileSync("etfs.json", "utf8"));
+const TOP_N = parseInt(process.env.TOP_N || "10");
+const AI_TOP = parseInt(process.env.AI_TOP || "3");
 const UA = { "User-Agent": "Mozilla/5.0" };
 const num = (v) => { const n = parseFloat(String(v ?? "").replace(/,/g, "")); return Number.isFinite(n) ? n : null; };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -21,6 +24,45 @@ const getJSON = async (url, opt) => { const r = await fetch(url, opt); if (!r.ok
 // 讀取上一版資料（保留走勢、新聞、分析）
 let prev = {};
 try { prev = await getJSON(`${SITE}/data.json?t=${Date.now()}`); } catch { console.log("no previous data"); }
+let longPrev = {};
+try { longPrev = await getJSON(`${SITE}/charts-long.json?t=${Date.now()}`); } catch {}
+
+// 依證交所官方產業別，取各產業市值前 N 名（市值＝發行股數 × 最新收盤價）
+const IND = { "01": "水泥工業", "02": "食品工業", "03": "塑膠工業", "04": "紡織纖維", "05": "電機機械", "06": "電器電纜", "08": "玻璃陶瓷", "09": "造紙工業", "10": "鋼鐵工業", "11": "橡膠工業", "12": "汽車工業", "14": "建材營造業", "15": "航運業", "16": "觀光餐旅", "17": "金融保險業", "18": "貿易百貨業", "21": "化學工業", "22": "生技醫療業", "23": "油電燃氣業", "24": "半導體業", "25": "電腦及週邊設備業", "26": "光電業", "27": "通信網路業", "28": "電子零組件業", "29": "電子通路業", "30": "資訊服務業", "31": "其他電子業", "35": "綠能環保", "36": "數位雲端", "37": "運動休閒", "38": "居家生活" };
+async function buildSectors() {
+  const [co, px] = await Promise.all([
+    getJSON("https://openapi.twse.com.tw/v1/opendata/t187ap03_L"),
+    getJSON("https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL"),
+  ]);
+  const price = Object.fromEntries(px.map((r) => [r.Code, num(r.ClosingPrice)]));
+  const groups = {};
+  for (const c of co) {
+    const code = c["公司代號"], ind = String(c["產業別"] ?? "").trim().padStart(2, "0");
+    const sh = num(c["已發行普通股數或TDR原股發行股數"]), p = price[code];
+    if (!IND[ind] || !sh || !p || !/^\d{4}$/.test(code)) continue;
+    (groups[ind] ||= []).push({ s: code, n: c["公司簡稱"], m: "TW", cap: sh * p });
+  }
+  if (!Object.keys(groups).length) { console.error("產業別欄位格式不符，範例：", JSON.stringify(co[0])); throw new Error("no sectors"); }
+  const list = Object.entries(groups).map(([ind, a]) => {
+    a.sort((x, y) => y.cap - x.cap);
+    const name = IND[ind], e = CFG.etfs?.[name] || {};
+    return { name, count: a.length, total: a.reduce((t, x) => t + x.cap, 0),
+      stocks: a.slice(0, TOP_N).map(({ s, n, m }) => ({ s, n, m })),
+      etfs: (e.list || []).map(([s, n]) => ({ s, n, m: "TW", e: 1 })), note: e.note };
+  }).sort((a, b) => b.total - a.total).map(({ total, ...x }) => x);
+  for (const x of CFG.extraSectors || [])
+    list.push({ name: x.name, stocks: (x.stocks || []).map(([s, n]) => ({ s, n, m: "TW" })), etfs: (x.etfs || []).map(([s, n]) => ({ s, n, m: "TW", e: 1 })), note: x.note });
+  return list;
+}
+if (SLOW || !prev.sectors?.length) {
+  try { SECTORS = await buildSectors(); lap(`官方產業別排名完成：${SECTORS.length} 個產業`); }
+  catch (e) { console.error("buildSectors failed:", e.message); }
+}
+if (!SECTORS.length) SECTORS = prev.sectors || [];
+if (!SECTORS.length) { console.error("無法取得產業清單，中止"); process.exit(1); }
+ALL = [...new Map(SECTORS.flatMap((x) => [...x.stocks, ...(x.etfs || [])]).map((x) => [x.s, x])).values()];
+// AI 分析範圍：每個產業市值前 AI_TOP 名 + 全部 ETF
+const aiSet = new Set(SECTORS.flatMap((x) => [...x.stocks.slice(0, x.count ? AI_TOP : x.stocks.length).map((y) => y.s), ...(x.etfs || []).map((y) => y.s)]));
 
 async function quotesMIS() {
   let cookie = "";
@@ -28,14 +70,17 @@ async function quotesMIS() {
     const r = await fetch("https://mis.twse.com.tw/stock/index.jsp", { headers: UA });
     cookie = (r.headers.getSetCookie?.() || []).map((c) => c.split(";")[0]).join("; ");
   } catch {}
-  const ex = ALL.map((x) => `tse_${x.s}.tw`).join("|");
-  const d = await getJSON(`https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=${ex}&json=1&delay=0&_=${Date.now()}`,
-    { headers: { ...UA, Cookie: cookie, Referer: "https://mis.twse.com.tw/stock/index.jsp" } });
   const out = {};
-  for (const m of d.msgArray || []) {
-    const y = num(m.y); if (y == null) continue;
-    const last = num(m.z) ?? y;
-    out[m.c] = { price: last, prev: y, change: last - y, pct: ((last - y) / y) * 100, hi: num(m.h), lo: num(m.l) };
+  for (let i = 0; i < ALL.length; i += 40) {
+    const ex = ALL.slice(i, i + 40).map((x) => `tse_${x.s}.tw`).join("|");
+    const d = await getJSON(`https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=${ex}&json=1&delay=0&_=${Date.now()}`,
+      { headers: { ...UA, Cookie: cookie, Referer: "https://mis.twse.com.tw/stock/index.jsp" } });
+    for (const m of d.msgArray || []) {
+      const y = num(m.y); if (y == null) continue;
+      const last = num(m.z) ?? y;
+      out[m.c] = { price: last, prev: y, change: last - y, pct: ((last - y) / y) * 100, hi: num(m.h), lo: num(m.l) };
+    }
+    await sleep(300);
   }
   return out;
 }
@@ -73,7 +118,8 @@ for (const { s } of ALL) {
 }
 
 // 走勢圖：Yahoo Finance 免費圖表介面（當日 5 分、近 5 日 15 分、近 3 月日線）
-const charts = { ...(prev.charts || {}) };
+const charts = Object.fromEntries(Object.entries(prev.charts || {}).map(([k, v]) => [k, { d1: v.d1, prev: v.prev }]));
+const long = { ...longPrev };
 async function yahoo(code, range, interval) {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${code}.TW?range=${range}&interval=${interval}&includePrePost=false`;
   let j;
@@ -93,9 +139,11 @@ await Promise.all(Array.from({ length: 5 }, async () => {
       const c = { ...(charts[st.s] || {}) };
       const d1 = await yahoo(st.s, "1d", "5m");
       if (d1.pts.length) { c.d1 = d1.pts; if (d1.prev != null) c.prev = d1.prev; }
-      if (SLOW || !c.d5) {
-        const d5 = await yahoo(st.s, "5d", "15m"); if (d5.pts.length) c.d5 = d5.pts;
-        const m3 = await yahoo(st.s, "3mo", "1d"); if (m3.pts.length) c.m3 = m3.pts;
+      if (SLOW || !long[st.s]?.d5) {
+        const L = { ...(long[st.s] || {}) };
+        const d5 = await yahoo(st.s, "5d", "15m"); if (d5.pts.length) L.d5 = d5.pts;
+        const m3 = await yahoo(st.s, "3mo", "1d"); if (m3.pts.length) L.m3 = m3.pts;
+        long[st.s] = L;
       }
       charts[st.s] = c; cOk++;
     } catch (e) { cFail++; cErr ||= e.message; }
@@ -158,14 +206,14 @@ async function pickModel() {
 // AI 分析（Gemini 免費額度，每日一次）
 const analysis = { ...(prev.analysis || {}) };
 if (KEY) {
-  const aiTotal = ALL.filter((x) => SLOW || !analysis[x.s]).length;
+  const aiTotal = ALL.filter((x) => aiSet.has(x.s) && (SLOW || !analysis[x.s])).length;
   let aiDone = 0;
   lap(`開始 AI 分析，共 ${aiTotal} 檔，型號 ${MODEL}`);
   // 優化：每批 6 檔合併成 1 次請求（56 次 → 約 10 次），並加上熔斷與時間預算
   const BATCH = 6;
   const AI_BUDGET_MS = (parseFloat(process.env.AI_BUDGET_MIN) || 12) * 60000;
   const aiStart = Date.now();
-  const todo = ALL.filter((x) => SLOW || !analysis[x.s]);
+  const todo = ALL.filter((x) => aiSet.has(x.s) && (SLOW || !analysis[x.s]));
   const line = (st) => {
     const q = quotes[st.s], f = fundamentals[st.s] || {};
     const heads = (f.news || []).slice(0, 3).map((n) => n.title).join("；") || "無";
@@ -235,5 +283,6 @@ if (KEY) {
 }
 
 lap("AI 分析階段結束");
-fs.writeFileSync("public/data.json", JSON.stringify({ updated: now, sectors: SECTORS, quotes, charts, fundamentals, analysis }));
+fs.writeFileSync("public/data.json", JSON.stringify({ updated: now, sectors: SECTORS, quotes, charts, fundamentals, analysis, aiCodes: [...aiSet] }));
+fs.writeFileSync("public/charts-long.json", JSON.stringify(long));
 lap(`全部完成：${Object.keys(quotes).length} 檔報價、${Object.keys(analysis).length} 篇分析`);

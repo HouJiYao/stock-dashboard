@@ -172,7 +172,7 @@ h3{margin:22px 0 4px;font:500 12px "JetBrains Mono",monospace;letter-spacing:.2e
 <script>
 const getData=()=>fetch("/data.json?t="+Date.now()).then(r=>r.json());//@GETDATA
 const UP="#ff4d6d",DOWN="#19e6a1",reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;
-let D=null,si=0,kind="stock",pick=null,charts=[],last={},typer=null,dir=0,rng="d1",lastPick=null;
+let D=null,si=0,kind="stock",pick=null,charts=[],last={},typer=null,dir=0,rng="d1",lastPick=null,LONG=null,longP=null;
 try{si=+localStorage.getItem("si")||0}catch(e){}
 const $=s=>document.querySelector(s);
 const fmt=n=>n==null?"–":Number(n).toLocaleString("en-US",{maximumFractionDigits:2});
@@ -208,7 +208,9 @@ const RNG=[["d1","當日"],["d5","5日"],["m3","3個月"],["acc","累積"]];
 const fT={d1:t=>new Date(t).toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit",hour12:false}),
   d5:t=>new Date(t).toLocaleString("zh-TW",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit",hour12:false}),
   m3:t=>new Date(t).toLocaleDateString("zh-TW",{month:"numeric",day:"numeric"})};fT.acc=fT.d5;
-const ptsOf=(code,r)=>r=="acc"?D.quotes[code]?.series:D.charts?.[code]?.[r];
+const ptsOf=(code,r)=>r=="acc"?D.quotes[code]?.series:(D.charts?.[code]?.[r]||LONG?.[code]?.[r]);
+const needLong=(code,r)=>(r=="d5"||r=="m3")&&!D.charts?.[code]?.[r]&&LONG==null;
+const loadLong=()=>longP||(longP=fetch("/charts-long.json?t="+Date.now()).then(x=>x.json()).then(j=>LONG=j).catch(()=>LONG={}));
 function drawChart(anim){
   const code=pick,q=D.quotes[code],box=$("#dr .chartbox");if(!box||!q)return;
   charts.forEach(c=>c.destroy());charts=[];box.innerHTML="";
@@ -247,7 +249,7 @@ function renderNav(anim){
 }
 function renderHead(){
   const s=sec(),ns=itemsOf(s,"stock").length,ne=itemsOf(s,"etf").length;
-  $("#shead").innerHTML=`<div><h2>${esc(s.name)}</h2><div class="sub">${ns} 檔個股・${ne} 檔 ETF　平均 <span class="${cls(avg(s))}">${ptxt(avg(s))}</span></div></div>
+  $("#shead").innerHTML=`<div><h2>${esc(s.name)}</h2><div class="sub">${s.count?"市值前 "+ns+" 名・共 "+s.count+" 家":ns+" 檔個股"}・${ne} 檔 ETF　平均 <span class="${cls(avg(s))}">${ptxt(avg(s))}</span></div></div>
     <div class="seg" role="group" aria-label="類別"><button data-k="stock" aria-pressed="${kind=="stock"}" ${ns?"":"disabled"}>個股 ${ns}</button><button data-k="etf" aria-pressed="${kind=="etf"}" ${ne?"":"disabled"}>ETF ${ne}</button></div>`;
   $("#shead").querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{kind=b.dataset.k;pick=null;dir=0;render(true)});
   $("#snote").textContent=kind=="etf"&&s.note?"ⓘ "+s.note:"";
@@ -285,19 +287,19 @@ function renderDetail(anim){
     .map(([k,v])=>`<div><span>${k}</span><b>${v}</b></div>`).join("");
   const news=(f.news||[]).map(n=>`<li><a href="${esc(n.url)}" target="_blank" rel="noopener noreferrer">${esc(n.title)}</a><br><small>${esc(n.src)}${n.t?"・"+new Date(n.t).toLocaleDateString("zh-TW"):""}</small></li>`).join("")||"<li>暫無新聞資料</li>";
   if(code!==lastPick){rng="d1";lastPick=code}
-  if(!((ptsOf(code,rng)||[]).length>1))rng=(ptsOf(code,"acc")||[]).length>1?"acc":rng;
+  if(!((ptsOf(code,rng)||[]).length>1)&&!needLong(code,rng))rng=(ptsOf(code,"acc")||[]).length>1?"acc":rng;
   const dr=$("#dr"),keep=dr.scrollTop;
   dr.innerHTML=`<div class="dh"><div><div class="sym">${code}${st.e?" ・ ETF":""}</div><h2>${esc(st.n)}</h2></div><button class="x" id="dx" aria-label="關閉">✕</button></div>
     ${q?`<div style="margin-top:14px"><span class="price ${u?"up":"down"}" style="margin:0">${fmt(q.price)}</span> <span class="chg ${u?"up":"down"}">${u?"▲":"▼"} ${fmt(Math.abs(q.change))}（${fmt(Math.abs(q.pct))}%）</span></div>`:""}
-    <div class="seg rng" role="group" aria-label="走勢區間">${RNG.map(([k,n])=>`<button data-r="${k}" aria-pressed="${k==rng}" ${(ptsOf(code,k)||[]).length>1?"":"disabled"}>${n}</button>`).join("")}</div><div class="chartbox"></div><div class="kv">${kv}</div>
+    <div class="seg rng" role="group" aria-label="走勢區間">${RNG.map(([k,n])=>`<button data-r="${k}" aria-pressed="${k==rng}" ${(ptsOf(code,k)||[]).length>1||needLong(code,k)?"":"disabled"}>${n}</button>`).join("")}</div><div class="chartbox"></div><div class="kv">${kv}</div>
     <h3>AI ANALYSIS</h3><div class="ai"></div>
     <h3>NEWS FEED</h3><ul class="news">${news}</ul>
     <p class="note">${a?"分析更新於 "+new Date(a.updated).toLocaleString("zh-TW")+"。":""}AI 生成內容僅供參考，不構成投資建議。</p>`;
   $("#detail").classList.add("open");document.body.classList.add("lock");
   $("#dx").onclick=closeDetail;
-  dr.querySelectorAll(".rng button").forEach(b=>b.onclick=()=>{rng=b.dataset.r;dr.querySelectorAll(".rng button").forEach(x=>x.setAttribute("aria-pressed",x===b));drawChart(true)});
+  dr.querySelectorAll(".rng button").forEach(b=>b.onclick=()=>{rng=b.dataset.r;dr.querySelectorAll(".rng button").forEach(x=>x.setAttribute("aria-pressed",x===b));{if(needLong(pick,rng)){$("#dr .chartbox").innerHTML='<p class="note">載入走勢資料…</p>';loadLong().then(()=>drawChart(true))}else drawChart(true)}});
   drawChart(anim);
-  const ai=dr.querySelector(".ai"),txt=a?a.text:"今日分析尚未產生，將於下個交易日早上 8:30 更新。";
+  const ai=dr.querySelector(".ai"),txt=a?a.text:(D.aiCodes&&!D.aiCodes.includes(code)?"此檔未納入 AI 分析（僅分析各產業市值前 3 名與 ETF）。":"今日分析尚未產生，將於下個交易日早上 8:30 更新。");
   if(anim&&!reduce){let i=0;ai.classList.add("caret");typer=setInterval(()=>{ai.textContent=txt.slice(0,++i);if(i>=txt.length){clearInterval(typer);ai.classList.remove("caret")}},14)}
   else ai.textContent=txt;
   if(anim)dr.scrollTop=0;else dr.scrollTop=keep;
