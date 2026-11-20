@@ -7,48 +7,68 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+TC:wght@400;500;700&display=swap">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
-:root{--bg:#04060c;--ink:#e6edf7;--mute:#7d8aa5;--line:rgba(120,160,255,.16);--cy:#22d3ee;--vi:#8b5cf6;--up:#ff4d6d;--down:#19e6a1;color-scheme:dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+:root{--bg:#04060c;--ink:#e6edf7;--mute:#7d8aa5;--line:rgba(120,160,255,.16);--cy:#22d3ee;--vi:#8b5cf6;--up:#ff4d6d;--down:#19e6a1;color-scheme:dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px)}
 html{scroll-padding-top:env(safe-area-inset-top,0px)}
-*{box-sizing:border-box}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);font:15px/1.7 "Noto Sans TC",system-ui,sans-serif;overflow-x:hidden}
+body.lock{overflow:hidden}
 body::before{content:"";position:fixed;inset:0;z-index:-2;background-image:linear-gradient(rgba(120,160,255,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(120,160,255,.06) 1px,transparent 1px);background-size:44px 44px;-webkit-mask-image:radial-gradient(ellipse at 50% 20%,#000 30%,transparent 75%);mask-image:radial-gradient(ellipse at 50% 20%,#000 30%,transparent 75%);animation:pan 24s linear infinite}
-body::after{content:"";position:fixed;inset:0;z-index:5;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(255,255,255,.025) 0 1px,transparent 1px 3px)}
+body::after{content:"";position:fixed;inset:0;z-index:60;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(255,255,255,.022) 0 1px,transparent 1px 3px)}
 @keyframes pan{to{background-position:0 44px,44px 0}}
-.orb{position:fixed;z-index:-1;width:46vmax;height:46vmax;border-radius:50%;filter:blur(90px);opacity:.28;pointer-events:none}
+.orb{position:fixed;z-index:-1;width:46vmax;height:46vmax;border-radius:50%;filter:blur(90px);opacity:.26;pointer-events:none}
 .o1{background:var(--cy);top:-18vmax;left:-12vmax;animation:drift 22s ease-in-out infinite alternate}
 .o2{background:var(--vi);bottom:-20vmax;right:-14vmax;animation:drift 28s ease-in-out infinite alternate-reverse}
 @keyframes drift{to{transform:translate(8vmax,6vmax) scale(1.15)}}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:2px solid var(--cy);outline-offset:2px}
 .tape{overflow:hidden;white-space:nowrap;border-bottom:1px solid var(--line);background:rgba(8,12,24,.65);font:12.5px "JetBrains Mono",monospace}
-.track{display:inline-block;padding:8px 0;animation:marq 70s linear infinite;will-change:transform}
+.track{display:inline-block;padding:7px 0;animation:marq 80s linear infinite;will-change:transform}
 .tape:hover .track{animation-play-state:paused}
 .track span{margin-right:38px}
 @keyframes marq{to{transform:translateX(-50%)}}
-header,nav,main,.banner{max-width:1100px;margin-inline:auto;padding-inline:20px}
-header{padding-top:30px;display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px}
+header,main,.banner,.chips{max-width:1100px;margin-inline:auto;padding-inline:20px}
+header{padding-top:24px;display:flex;justify-content:space-between;align-items:flex-end;gap:12px}
 .eyebrow{font:500 12px "JetBrains Mono",monospace;letter-spacing:.22em;color:var(--cy);display:flex;align-items:center;gap:8px}
-.dot{width:8px;height:8px;border-radius:50%;background:var(--down);box-shadow:0 0 0 0 rgba(25,230,161,.7);animation:ping 1.8s infinite}
-@keyframes ping{70%{box-shadow:0 0 0 9px rgba(25,230,161,0)}100%{box-shadow:0 0 0 0 rgba(25,230,161,0)}}
-h1{margin:4px 0 0;font:700 clamp(28px,5vw,40px)/1.15 "Chakra Petch","Noto Sans TC",sans-serif;letter-spacing:.08em;background:linear-gradient(90deg,#fff,var(--cy) 60%,var(--vi));-webkit-background-clip:text;background-clip:text;color:transparent}
-.meta{text-align:right;font:12.5px "JetBrains Mono",monospace;color:var(--mute)}
-#clock{font-size:20px;color:var(--ink);letter-spacing:.08em}
-.banner{margin-top:10px;color:var(--mute);font-size:12.5px}
-nav{display:flex;gap:8px;overflow-x:auto;padding-block:18px 6px}
-.tab{background:rgba(255,255,255,.03);border:1px solid var(--line);color:var(--mute);padding:7px 16px;border-radius:8px;font:inherit;cursor:pointer;white-space:nowrap;letter-spacing:.06em;transition:.2s}
-.tab:hover{color:var(--ink);border-color:rgba(34,211,238,.5)}
-.tab[aria-pressed=true]{color:#04101a;font-weight:700;background:linear-gradient(90deg,var(--cy),#60a5fa);border-color:transparent;box-shadow:0 0 18px rgba(34,211,238,.35)}
-.tab:focus-visible,.card:focus-visible{outline:2px solid var(--cy);outline-offset:2px}
-main{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:16px;padding-block:14px 60px}
-.card{position:relative;text-align:left;color:inherit;font:inherit;padding:18px 18px 12px;border-radius:14px;border:1px solid var(--line);background:linear-gradient(160deg,rgba(18,26,48,.78),rgba(8,12,24,.78));-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);cursor:pointer;overflow:hidden;transition:border-color .25s,transform .25s,box-shadow .25s}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--down);animation:ping 1.8s infinite}
+@keyframes ping{0%{box-shadow:0 0 0 0 rgba(25,230,161,.7)}70%,100%{box-shadow:0 0 0 9px rgba(25,230,161,0)}}
+h1{margin:4px 0 0;font:700 clamp(24px,5vw,38px)/1.15 "Chakra Petch","Noto Sans TC",sans-serif;letter-spacing:.08em;background:linear-gradient(90deg,#fff,var(--cy) 60%,var(--vi));-webkit-background-clip:text;background-clip:text;color:transparent}
+.meta{text-align:right;font:12px "JetBrains Mono",monospace;color:var(--mute)}
+#clock{font-size:18px;color:var(--ink);letter-spacing:.08em}
+.banner{margin-top:8px;color:var(--mute);font-size:12.5px}
+/* 桌機：頂部可捲動產業列 */
+.chipsbar{position:sticky;top:0;z-index:20;margin-top:14px;background:rgba(4,6,12,.84);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border-block:1px solid var(--line)}
+.chips{display:flex;gap:8px;overflow-x:auto;padding-block:10px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;background:rgba(255,255,255,.03);border:1px solid var(--line);color:var(--mute);padding:6px 14px;border-radius:8px;white-space:nowrap;letter-spacing:.05em;transition:.2s}
+.chip:hover{color:var(--ink);border-color:rgba(34,211,238,.5)}
+.chip em{font:normal 11.5px "JetBrains Mono",monospace;margin-left:6px}
+.chip[aria-pressed=true]{color:#04101a;font-weight:700;background:linear-gradient(90deg,var(--cy),#60a5fa);border-color:transparent;box-shadow:0 0 18px rgba(34,211,238,.35)}
+.chip[aria-pressed=true] em{color:#04101a!important}
+.chip.all{color:var(--cy);border-color:rgba(34,211,238,.45)}
+/* 產業標頭 */
+.shead{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;max-width:1100px;margin:22px auto 0;padding-inline:20px}
+.shead h2{margin:0;font:700 26px/1.2 "Chakra Petch","Noto Sans TC",sans-serif;letter-spacing:.06em}
+.shead .sub{color:var(--mute);font-size:13px}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:rgba(255,255,255,.03)}
+.seg button{border:0;background:none;color:var(--mute);padding:7px 18px;transition:.2s}
+.seg button[aria-pressed=true]{background:linear-gradient(90deg,var(--cy),#60a5fa);color:#04101a;font-weight:700}
+.seg button:disabled{opacity:.35;cursor:not-allowed}
+.snote{max-width:1100px;margin:10px auto 0;padding:0 20px;color:var(--mute);font-size:13px}
+main{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:16px;padding-block:16px 60px;touch-action:pan-y}
+.in-l{animation:inl .35s cubic-bezier(.2,.7,.2,1)}.in-r{animation:inr .35s cubic-bezier(.2,.7,.2,1)}
+@keyframes inl{from{opacity:0;transform:translateX(-28px)}}@keyframes inr{from{opacity:0;transform:translateX(28px)}}
+/* 卡片 */
+.card{position:relative;text-align:left;padding:18px 18px 12px;border-radius:14px;border:1px solid var(--line);background:linear-gradient(160deg,rgba(18,26,48,.78),rgba(8,12,24,.78));-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);overflow:hidden;transition:border-color .25s,transform .25s}
 .card::before{content:"";position:absolute;inset:0;background:radial-gradient(240px circle at var(--mx,50%) var(--my,0),rgba(34,211,238,.17),transparent 60%);opacity:0;transition:opacity .25s;pointer-events:none}
 .card::after{content:"";position:absolute;top:8px;right:8px;width:10px;height:10px;border-top:1px solid var(--cy);border-right:1px solid var(--cy);opacity:.7}
-.card:hover::before{opacity:1}
-.card:hover{border-color:rgba(34,211,238,.55);transform:translateY(-3px)}
-.card.on{border-color:var(--cy);box-shadow:0 0 0 1px var(--cy),0 0 30px rgba(34,211,238,.25)}
-.rise{animation:rise .6s cubic-bezier(.2,.7,.2,1) backwards}
+.card:hover::before{opacity:1}.card:hover{border-color:rgba(34,211,238,.55);transform:translateY(-3px)}
+.rise{animation:rise .55s cubic-bezier(.2,.7,.2,1) backwards}
 @keyframes rise{from{opacity:0;transform:translateY(16px)}}
-.top{display:flex;justify-content:space-between;align-items:baseline;padding-right:14px}
-.top b{font-weight:700;font-size:16px;letter-spacing:.05em}
+.c-info{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;padding-right:14px}
+.c-info b{font-weight:700;font-size:16px;letter-spacing:.05em}
 .sym{color:var(--mute);font:12px "JetBrains Mono",monospace}
+.c-info .pe{width:100%}
+.tag{font:500 10.5px "JetBrains Mono",monospace;color:var(--vi);border:1px solid rgba(139,92,246,.5);border-radius:4px;padding:0 5px;margin-left:4px}
 .price{font:500 30px/1.3 "JetBrains Mono",monospace;margin-top:8px;border-radius:6px;display:inline-block}
 .chg{font:14px "JetBrains Mono",monospace}
 .up{color:var(--up)}.down{color:var(--down)}
@@ -56,21 +76,30 @@ main{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:
 .fu{animation:fu 1s}.fd{animation:fd 1s}
 @keyframes fu{0%{background:rgba(255,77,109,.4)}100%{background:transparent}}
 @keyframes fd{0%{background:rgba(25,230,161,.35)}100%{background:transparent}}
-.spark{height:60px;margin-top:8px}
+.spark{height:56px;margin-top:8px}
 svg{width:100%;height:100%;display:block}
 .draw{stroke-dasharray:1;animation:draw 1.2s ease-out backwards}
 @keyframes draw{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}
 .fade{animation:fadein 1s .4s backwards}
 @keyframes fadein{from{opacity:0}}
-#panel{grid-column:1/-1;position:relative;padding:26px;border-radius:16px;border:1px solid rgba(34,211,238,.4);background:linear-gradient(160deg,rgba(14,22,42,.85),rgba(6,10,20,.85));-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);box-shadow:0 0 40px rgba(34,211,238,.1)}
-.ph{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px}
-#panel h2{margin:0;font:700 24px "Chakra Petch","Noto Sans TC",sans-serif;letter-spacing:.06em}
-.chartbox{height:260px;margin-top:14px}
-.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:18px 0}
-.kv div{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:rgba(255,255,255,.02)}
+.empty{color:var(--mute);padding:60px 0;text-align:center;grid-column:1/-1}
+/* 詳細抽屜 */
+#detail{position:fixed;inset:0;z-index:40;display:none}
+#detail.open{display:block}
+.scrim{position:absolute;inset:0;background:rgba(2,4,10,.72);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);animation:fadein .25s}
+.dr{position:absolute;right:0;top:0;bottom:0;width:min(580px,100%);overflow-y:auto;padding:0 22px calc(28px + env(safe-area-inset-bottom,0px));background:linear-gradient(160deg,#0c1426,#060a14);border-left:1px solid rgba(34,211,238,.4);animation:slidein .35s cubic-bezier(.2,.7,.2,1)}
+@keyframes slidein{from{transform:translateX(40px);opacity:0}}
+@keyframes slideup{from{transform:translateY(40px);opacity:0}}
+.dh{position:sticky;top:0;z-index:2;margin:0 -22px;padding:16px 22px 12px;background:#0a1120;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:10px}
+.dh h2{margin:0;font:700 22px "Chakra Petch","Noto Sans TC",sans-serif;letter-spacing:.05em}
+.x{width:44px;height:44px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.04);font-size:18px}
+.x:hover{border-color:var(--cy)}
+.chartbox{height:240px;margin-top:14px}
+.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:18px 0}
+.kv div{border:1px solid var(--line);border-radius:10px;padding:8px 12px;background:rgba(255,255,255,.02)}
 .kv span{display:block;color:var(--mute);font-size:12px}
-.kv b{font:500 18px "JetBrains Mono",monospace}
-.ai{border-left:2px solid var(--vi);padding:2px 0 2px 14px;margin-top:6px;white-space:pre-wrap;max-width:48em}
+.kv b{font:500 17px "JetBrains Mono",monospace}
+.ai{border-left:2px solid var(--vi);padding:2px 0 2px 14px;margin-top:6px;white-space:pre-wrap}
 .caret::after{content:"▍";color:var(--cy);animation:blink 1s steps(1) infinite}
 @keyframes blink{50%{opacity:0}}
 h3{margin:22px 0 4px;font:500 12px "JetBrains Mono",monospace;letter-spacing:.2em;color:var(--cy)}
@@ -80,7 +109,42 @@ h3{margin:22px 0 4px;font:500 12px "JetBrains Mono",monospace;letter-spacing:.2e
 .news a{color:var(--ink);text-decoration:none}.news a:hover{color:var(--cy)}
 .news small{color:var(--mute)}
 .note{color:var(--mute);font-size:12.5px;margin:18px 0 0}
-.empty{color:var(--mute);padding:60px 0;text-align:center;grid-column:1/-1}
+/* 產業選單（全螢幕） */
+.sheet{position:fixed;inset:0;z-index:50;display:none;background:rgba(3,5,11,.95);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+.sheet.open{display:block;animation:fadein .2s}
+.sh-in{max-width:900px;margin:auto;height:100%;overflow-y:auto;padding:calc(14px + env(safe-area-inset-top,0px)) 16px calc(24px + env(safe-area-inset-bottom,0px))}
+.sh-top{display:flex;gap:10px;position:sticky;top:0;z-index:2;padding-bottom:12px}
+.sh-top input{flex:1;min-width:0;height:48px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.05);color:var(--ink);padding:0 16px;font:16px "Noto Sans TC",sans-serif}
+.sh-top .x{width:48px;height:48px}
+.sh-title{font:500 12px "JetBrains Mono",monospace;letter-spacing:.2em;color:var(--cy);margin:6px 0 10px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.tile{position:relative;text-align:left;min-height:92px;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:linear-gradient(160deg,var(--h,rgba(255,255,255,.03)),rgba(8,12,24,.85));display:flex;flex-direction:column;justify-content:space-between;transition:.2s}
+.tile:hover{border-color:rgba(34,211,238,.55);transform:translateY(-2px)}
+.tile.cur{border-color:var(--cy);box-shadow:0 0 18px rgba(34,211,238,.3)}
+.tile b{font-size:16px;letter-spacing:.04em}.tile span{color:var(--mute);font-size:12px}.tile em{font:normal 15px "JetBrains Mono",monospace}
+.res{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;padding:12px 4px;border:0;border-top:1px solid var(--line);background:none;text-align:left;min-height:52px}
+.res:hover{background:rgba(34,211,238,.06)}
+.res small{color:var(--mute)}
+/* 手機：底部拇指列 */
+.bar{display:none}
+@media(max-width:720px){
+  header{padding-top:16px}.meta{display:none}.banner{margin-top:6px}
+  .chipsbar{display:none}
+  .shead{margin-top:16px}.shead h2{font-size:22px}
+  .seg{width:100%}.seg button{flex:1;min-height:42px}
+  main{grid-template-columns:1fr;gap:10px;padding-block:12px 110px}
+  .card{display:grid;grid-template-columns:1fr 72px auto;gap:10px;align-items:center;padding:12px 14px}
+  .card::after{display:none}.card:hover{transform:none}
+  .c-info{padding-right:0}.c-info b{font-size:15px}
+  .spark{height:34px;margin:0}.price{font-size:20px;margin:0}.c-px{text-align:right}
+  .dr{top:5vh;width:100%;border-left:0;border-top:1px solid rgba(34,211,238,.4);border-radius:18px 18px 0 0;animation:slideup .35s cubic-bezier(.2,.7,.2,1)}
+  .bar{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:30;gap:8px;padding:10px 12px calc(10px + env(safe-area-inset-bottom,0px));background:rgba(6,10,20,.9);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border-top:1px solid var(--line)}
+  .bar button{height:50px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.05)}
+  .bar .ar{width:56px;font-size:20px}
+  .bar .mid{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;border-color:rgba(34,211,238,.5);background:linear-gradient(90deg,rgba(34,211,238,.16),rgba(139,92,246,.16))}
+  .bar .mid small{color:var(--mute);font:12px "JetBrains Mono",monospace}
+  .bar .mid em{font:normal 13px "JetBrains Mono",monospace}
+}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -92,22 +156,43 @@ h3{margin:22px 0 4px;font:500 12px "JetBrains Mono",monospace;letter-spacing:.2e
   <div class="meta"><div id="clock"></div><div id="stamp"></div></div>
 </header>
 <!--BANNER-->
-<nav id="tabs" aria-label="產業"></nav>
+<div class="chipsbar"><nav class="chips" id="chips" aria-label="產業"></nav></div>
+<div class="shead" id="shead"></div>
+<div class="snote" id="snote"></div>
 <main id="grid"></main>
+<div class="bar" id="bar">
+  <button class="ar" id="prev" aria-label="上一個產業">‹</button>
+  <button class="mid" id="open2" aria-label="開啟產業選單"><span id="barlabel"></span><em id="barpct"></em><small>▾</small></button>
+  <button class="ar" id="next" aria-label="下一個產業">›</button>
+</div>
+<div id="detail" role="dialog" aria-modal="true" aria-label="個股詳細"><div class="scrim" id="scrim"></div><div class="dr" id="dr"></div></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="選擇產業">
+  <div class="sh-in"><div class="sh-top"><input id="q" type="search" placeholder="搜尋產業、股票、ETF 或代號" autocomplete="off"><button class="x" id="sx" aria-label="關閉">✕</button></div><div id="shbody"></div></div>
+</div>
 <script>
 const getData=()=>fetch("/data.json?t="+Date.now()).then(r=>r.json());//@GETDATA
 const UP="#ff4d6d",DOWN="#19e6a1",reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;
-let D=null,sector=0,pick=null,charts=[],last={},typer=null;
+let D=null,si=0,kind="stock",pick=null,charts=[],last={},typer=null,dir=0;
+try{si=+localStorage.getItem("si")||0}catch(e){}
+const $=s=>document.querySelector(s);
 const fmt=n=>n==null?"–":Number(n).toLocaleString("en-US",{maximumFractionDigits:2});
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const big=n=>n==null?"–":n>=1e12?(n/1e12).toFixed(2)+" 兆":n>=1e8?(n/1e8).toFixed(0)+" 億":fmt(n);
-const $=s=>document.querySelector(s);
+const cls=v=>v==null?"":v>=0?"up":"down";
+const ptxt=v=>v==null?"–":(v>=0?"+":"−")+fmt(Math.abs(v))+"%";
+const itemsOf=(s,k)=>(k=="etf"?s.etfs:s.stocks)||[];
+const sec=()=>D.sectors[si];
+const avg=s=>{const l=itemsOf(s,"stock").length?itemsOf(s,"stock"):itemsOf(s,"etf");const a=l.map(x=>D.quotes[x.s]?.pct).filter(v=>v!=null);return a.length?a.reduce((x,y)=>x+y)/a.length:null};
+function findItem(code){for(const s of D.sectors)for(const x of [...(s.stocks||[]),...(s.etfs||[])])if(x.s==code)return x}
 setInterval(()=>$("#clock").textContent=new Date().toLocaleTimeString("zh-TW",{hour12:false}),1000);
 
 async function load(first){
-  try{D=await getData();render(first);ticker();}
-  catch(e){$("#grid").innerHTML='<p class="empty">資料載入中或暫時無法取得，請稍後重新整理。</p>';}
+  try{D=await getData();if(si>=D.sectors.length)si=0;fixKind();render(first);ticker()}
+  catch(e){$("#grid").innerHTML='<p class="empty">資料載入中或暫時無法取得，請稍後重新整理。</p>'}
 }
+function fixKind(){const s=sec();if(!itemsOf(s,kind).length)kind=itemsOf(s,"stock").length?"stock":"etf"}
+function go(i,d){const n=D.sectors.length;si=((i%n)+n)%n;dir=d||0;pick=null;kind="stock";fixKind();try{localStorage.setItem("si",si)}catch(e){}render(true)}
+
 function count(el,to){
   if(reduce||!isFinite(to)){el.textContent=fmt(to);return}
   const t0=performance.now(),o={minimumFractionDigits:2,maximumFractionDigits:2};
@@ -119,68 +204,126 @@ function spark(p,up,anim){
   const pts=p.map((v,i)=>`${(i*dx).toFixed(1)},${(h-5-(v-mn)/(mx-mn||1)*(h-10)).toFixed(1)}`).join(" ");
   return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${c}" stop-opacity=".35"/><stop offset="1" stop-color="${c}" stop-opacity="0"/></linearGradient></defs><polygon class="${anim?"fade":""}" points="0,${h} ${pts} ${w},${h}" fill="url(#${id})"/><polyline class="${anim?"draw":""}" pathLength="1" points="${pts}" fill="none" stroke="${c}" stroke-width="2" stroke-linejoin="round"/></svg>`;
 }
-function bigChart(box,series,up){
+function bigChart(box,series,up,anim){
   const cv=document.createElement("canvas");box.append(cv);const c=up?UP:DOWN;
   charts.push(new Chart(cv,{type:"line",
     data:{labels:series.map(x=>new Date(x.t).toLocaleString("zh-TW",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})),
       datasets:[{data:series.map(x=>x.p),borderColor:c,borderWidth:2,pointRadius:0,pointHoverRadius:5,tension:.3,fill:true,
         backgroundColor:ctx=>{const a=ctx.chart.chartArea;if(!a)return c+"22";const g=ctx.chart.ctx.createLinearGradient(0,a.top,0,a.bottom);g.addColorStop(0,c+"55");g.addColorStop(1,c+"00");return g}}]},
-    options:{maintainAspectRatio:false,animation:reduce?false:{duration:900},interaction:{mode:"index",intersect:false},
+    options:{maintainAspectRatio:false,animation:reduce||!anim?false:{duration:900},interaction:{mode:"index",intersect:false},
       plugins:{legend:{display:false},tooltip:{backgroundColor:"rgba(8,12,24,.95)",borderColor:"rgba(34,211,238,.5)",borderWidth:1,titleColor:"#9fb0cc",bodyColor:"#e6edf7"}},
-      scales:{x:{ticks:{color:"#7d8aa5",maxTicksLimit:6},grid:{color:"rgba(255,255,255,.05)"}},y:{ticks:{color:"#7d8aa5"},grid:{color:"rgba(255,255,255,.05)"}}}}}));
+      scales:{x:{ticks:{color:"#7d8aa5",maxTicksLimit:5},grid:{color:"rgba(255,255,255,.05)"}},y:{ticks:{color:"#7d8aa5"},grid:{color:"rgba(255,255,255,.05)"}}}}}));
 }
 function ticker(){
-  const items=D.sectors.flatMap(s=>s.stocks).filter(s=>D.quotes[s.s]).map(s=>{const q=D.quotes[s.s],u=q.change>=0;
+  const seen=new Set(),items=D.sectors.flatMap(s=>[...(s.stocks||[]),...(s.etfs||[])]).filter(s=>D.quotes[s.s]&&!seen.has(s.s)&&seen.add(s.s)).map(s=>{const q=D.quotes[s.s],u=q.change>=0;
     return `<span>${s.s} ${esc(s.n)} <b class="${u?"up":"down"}">${fmt(q.price)} ${u?"▲":"▼"}${fmt(Math.abs(q.pct))}%</b></span>`}).join("");
   $("#track").innerHTML=items+items;
 }
+
 function render(anim){
-  charts.forEach(c=>c.destroy());charts=[];clearInterval(typer);
-  const tabs=$("#tabs");
-  tabs.innerHTML=D.sectors.map((s,i)=>`<button class="tab" aria-pressed="${i==sector}" data-i="${i}">${esc(s.name)}</button>`).join("");
-  tabs.querySelectorAll("button").forEach(b=>b.onclick=()=>{sector=+b.dataset.i;pick=null;render(true)});
-  const g=$("#grid");g.innerHTML="";
-  const list=D.sectors[sector].stocks;let latest=0;
-  list.forEach((st,i)=>{
+  renderNav(anim);renderHead();renderGrid(anim);
+  if(pick)renderDetail(anim);
+  if($("#sheet").classList.contains("open"))renderSheet();
+}
+function renderNav(anim){
+  const ch=$("#chips");
+  ch.innerHTML=`<button class="chip all" id="all">⊞ 全部產業</button>`+D.sectors.map((s,i)=>{const a=avg(s);return `<button class="chip" aria-pressed="${i==si}" data-i="${i}">${esc(s.name)}<em class="${cls(a)}">${ptxt(a)}</em></button>`}).join("");
+  ch.querySelectorAll(".chip[data-i]").forEach(b=>b.onclick=()=>go(+b.dataset.i,+b.dataset.i>si?1:-1));
+  $("#all").onclick=openSheet;
+  if(anim)ch.querySelector('[aria-pressed="true"]')?.scrollIntoView({inline:"center",block:"nearest",behavior:reduce?"auto":"smooth"});
+  const a=avg(sec());
+  $("#barlabel").textContent=`${si+1}/${D.sectors.length}　${sec().name}`;
+  $("#barpct").textContent=ptxt(a);$("#barpct").className=cls(a);
+}
+function renderHead(){
+  const s=sec(),ns=itemsOf(s,"stock").length,ne=itemsOf(s,"etf").length;
+  $("#shead").innerHTML=`<div><h2>${esc(s.name)}</h2><div class="sub">${ns} 檔個股・${ne} 檔 ETF　平均 <span class="${cls(avg(s))}">${ptxt(avg(s))}</span></div></div>
+    <div class="seg" role="group" aria-label="類別"><button data-k="stock" aria-pressed="${kind=="stock"}" ${ns?"":"disabled"}>個股 ${ns}</button><button data-k="etf" aria-pressed="${kind=="etf"}" ${ne?"":"disabled"}>ETF ${ne}</button></div>`;
+  $("#shead").querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{kind=b.dataset.k;pick=null;dir=0;render(true)});
+  $("#snote").textContent=kind=="etf"&&s.note?"ⓘ "+s.note:"";
+}
+function renderGrid(anim){
+  charts.forEach(c=>c.destroy());charts=[];
+  const g=$("#grid");g.innerHTML="";g.className=anim&&dir?(dir>0?"in-r":"in-l"):"";
+  let latest=0;
+  itemsOf(sec(),kind).forEach((st,i)=>{
     const q=D.quotes[st.s],f=D.fundamentals?.[st.s]||{};
-    const b=document.createElement("button");b.className="card"+(pick==st.s?" on":"")+(anim?" rise":"");b.style.animationDelay=i*60+"ms";
-    if(!q){b.innerHTML=`<div class="top"><b>${esc(st.n)}</b><span class="sym">${st.s}</span></div><p class="note">等待首次更新…</p>`;g.append(b);return}
+    const b=document.createElement("button");b.className="card"+(anim&&!dir?" rise":"");b.style.animationDelay=i*50+"ms";
+    const tag=st.e?'<span class="tag">ETF</span>':"";
+    if(!q){b.innerHTML=`<div class="c-info"><b>${esc(st.n)}</b><span class="sym">${st.s}</span>${tag}<div class="sym pe">等待首次更新…</div></div>`;g.append(b);return}
     latest=Math.max(latest,q.updated||0);
-    const u=q.change>=0,cls=u?"up":"down";
-    b.innerHTML=`<div class="top"><b>${esc(st.n)}</b><span class="sym">${st.s}</span></div>
-      <div class="price ${cls}">${fmt(q.price)}</div>
-      <div class="chg ${cls}">${u?"▲":"▼"} ${fmt(Math.abs(q.change))}（${fmt(Math.abs(q.pct))}%）</div>
-      <div class="sym">PE ${fmt(f.pe)}・殖利率 ${fmt(f.yield)}%</div>
+    const u=q.change>=0,c=u?"up":"down";
+    b.innerHTML=`<div class="c-info"><b>${esc(st.n)}</b><span class="sym">${st.s}</span>${tag}<div class="sym pe">${st.e?"今日 "+fmt(q.lo)+" – "+fmt(q.hi):"PE "+fmt(f.pe)+"・殖利率 "+fmt(f.yield)+"%"}</div></div>
+      <div class="c-px"><div class="price ${c}">${fmt(q.price)}</div><div class="chg ${c}">${u?"▲":"▼"} ${fmt(Math.abs(q.change))}（${fmt(Math.abs(q.pct))}%）</div></div>
       <div class="spark">${spark(q.series.slice(-80).map(x=>x.p),u,anim)}</div>`;
     const pe=b.querySelector(".price");
-    if(anim)count(pe,q.price);
-    else if(last[st.s]!=null&&last[st.s]!==q.price)pe.classList.add(q.price>last[st.s]?"fu":"fd");
+    if(anim)count(pe,q.price);else if(last[st.s]!=null&&last[st.s]!==q.price)pe.classList.add(q.price>last[st.s]?"fu":"fd");
     last[st.s]=q.price;
     b.onpointermove=e=>{const r=b.getBoundingClientRect();b.style.setProperty("--mx",e.clientX-r.left+"px");b.style.setProperty("--my",e.clientY-r.top+"px")};
-    b.onclick=()=>{pick=st.s;render(true);$("#panel")?.scrollIntoView({behavior:reduce?"auto":"smooth",block:"nearest"})};
+    b.onclick=()=>{pick=st.s;renderDetail(true)};
     g.append(b);
   });
-  if(pick){
-    const st=list.find(x=>x.s==pick),q=D.quotes[pick],f=D.fundamentals?.[pick]||{},a=D.analysis?.[pick];
-    const p=document.createElement("section");p.id="panel";if(anim)p.className="rise";
-    const u=q&&q.change>=0;
-    const kv=[["本益比",fmt(f.pe)],["股價淨值比",fmt(f.pb)],["殖利率",f.yield==null?"–":fmt(f.yield)+"%"],["市值（TWD）",big(f.mcap)],["今日最高",fmt(q?.hi)],["今日最低",fmt(q?.lo)]]
-      .map(([k,v])=>`<div><span>${k}</span><b>${v}</b></div>`).join("");
-    const news=(f.news||[]).map(n=>`<li><a href="${esc(n.url)}" target="_blank" rel="noopener noreferrer">${esc(n.title)}</a><br><small>${esc(n.src)}${n.t?"・"+new Date(n.t).toLocaleDateString("zh-TW"):""}</small></li>`).join("")||"<li>暫無新聞資料</li>";
-    p.innerHTML=`<div class="ph"><div><div class="sym">${st.s}</div><h2>${esc(st.n)}</h2></div>
-      ${q?`<div><span class="price ${u?"up":"down"}">${fmt(q.price)}</span> <span class="chg ${u?"up":"down"}">${u?"▲":"▼"} ${fmt(Math.abs(q.pct))}%</span></div>`:""}</div>
-      <div class="chartbox"></div><div class="kv">${kv}</div>
-      <h3>AI ANALYSIS</h3><div class="ai"></div>
-      <h3>NEWS FEED</h3><ul class="news">${news}</ul>
-      <p class="note">${a?"分析更新於 "+new Date(a.updated).toLocaleString("zh-TW")+"。":""}AI 生成內容僅供參考，不構成投資建議。</p>`;
-    g.append(p);
-    if(q)bigChart(p.querySelector(".chartbox"),q.series,u);
-    const ai=p.querySelector(".ai"),txt=a?a.text:"今日分析尚未產生，將於下個交易日早上 8:30 更新。";
-    if(anim&&!reduce){let i=0;ai.classList.add("caret");typer=setInterval(()=>{ai.textContent=txt.slice(0,++i);if(i>=txt.length){clearInterval(typer);ai.classList.remove("caret")}},14)}
-    else ai.textContent=txt;
-  }
-  $("#stamp").textContent=latest?"最後更新 "+new Date(latest).toLocaleTimeString("zh-TW",{hour12:false})+"・資料可能延遲數分鐘":"";
+  $("#stamp").textContent=latest?"最後更新 "+new Date(latest).toLocaleTimeString("zh-TW",{hour12:false}):"";
+  dir=0;
 }
+function renderDetail(anim){
+  const code=pick,st=findItem(code);if(!st)return;
+  const q=D.quotes[code],f=D.fundamentals?.[code]||{},a=D.analysis?.[code],u=q&&q.change>=0;
+  clearInterval(typer);charts.forEach(c=>c.destroy());charts=[];
+  const kv=(st.e?[["類型","ETF"],["前收盤",fmt(q?.prev)],["今日最高",fmt(q?.hi)],["今日最低",fmt(q?.lo)]]
+    :[["本益比",fmt(f.pe)],["股價淨值比",fmt(f.pb)],["殖利率",f.yield==null?"–":fmt(f.yield)+"%"],["市值（TWD）",big(f.mcap)],["今日最高",fmt(q?.hi)],["今日最低",fmt(q?.lo)]])
+    .map(([k,v])=>`<div><span>${k}</span><b>${v}</b></div>`).join("");
+  const news=(f.news||[]).map(n=>`<li><a href="${esc(n.url)}" target="_blank" rel="noopener noreferrer">${esc(n.title)}</a><br><small>${esc(n.src)}${n.t?"・"+new Date(n.t).toLocaleDateString("zh-TW"):""}</small></li>`).join("")||"<li>暫無新聞資料</li>";
+  const dr=$("#dr"),keep=dr.scrollTop;
+  dr.innerHTML=`<div class="dh"><div><div class="sym">${code}${st.e?" ・ ETF":""}</div><h2>${esc(st.n)}</h2></div><button class="x" id="dx" aria-label="關閉">✕</button></div>
+    ${q?`<div style="margin-top:14px"><span class="price ${u?"up":"down"}" style="margin:0">${fmt(q.price)}</span> <span class="chg ${u?"up":"down"}">${u?"▲":"▼"} ${fmt(Math.abs(q.change))}（${fmt(Math.abs(q.pct))}%）</span></div>`:""}
+    <div class="chartbox"></div><div class="kv">${kv}</div>
+    <h3>AI ANALYSIS</h3><div class="ai"></div>
+    <h3>NEWS FEED</h3><ul class="news">${news}</ul>
+    <p class="note">${a?"分析更新於 "+new Date(a.updated).toLocaleString("zh-TW")+"。":""}AI 生成內容僅供參考，不構成投資建議。</p>`;
+  $("#detail").classList.add("open");document.body.classList.add("lock");
+  $("#dx").onclick=closeDetail;
+  if(q)bigChart(dr.querySelector(".chartbox"),q.series,u,anim);
+  const ai=dr.querySelector(".ai"),txt=a?a.text:"今日分析尚未產生，將於下個交易日早上 8:30 更新。";
+  if(anim&&!reduce){let i=0;ai.classList.add("caret");typer=setInterval(()=>{ai.textContent=txt.slice(0,++i);if(i>=txt.length){clearInterval(typer);ai.classList.remove("caret")}},14)}
+  else ai.textContent=txt;
+  if(anim)dr.scrollTop=0;else dr.scrollTop=keep;
+}
+function closeDetail(){pick=null;clearInterval(typer);$("#detail").classList.remove("open");if(!$("#sheet").classList.contains("open"))document.body.classList.remove("lock")}
+$("#scrim").onclick=closeDetail;
+
+/* 產業選單 + 搜尋 */
+function openSheet(){$("#sheet").classList.add("open");document.body.classList.add("lock");$("#q").value="";renderSheet()}
+function closeSheet(){$("#sheet").classList.remove("open");if(!$("#detail").classList.contains("open"))document.body.classList.remove("lock")}
+function renderSheet(){
+  const q=$("#q").value.trim().toLowerCase(),body=$("#shbody");
+  if(!q){
+    body.innerHTML=`<div class="sh-title">ALL SECTORS・${D.sectors.length}</div><div class="tiles">`+D.sectors.map((s,i)=>{
+      const a=avg(s),al=a==null?0:Math.min(Math.abs(a)/3,1)*.3,h=a==null?"rgba(255,255,255,.03)":(a>=0?`rgba(255,77,109,${al})`:`rgba(25,230,161,${al})`);
+      return `<button class="tile ${i==si?"cur":""}" data-i="${i}" style="--h:${h}"><b>${esc(s.name)}</b><span>${itemsOf(s,"stock").length} 股・${itemsOf(s,"etf").length} ETF</span><em class="${cls(a)}">${ptxt(a)}</em></button>`}).join("")+`</div>`;
+    body.querySelectorAll(".tile").forEach(b=>b.onclick=()=>{closeSheet();go(+b.dataset.i,+b.dataset.i>si?1:-1)});
+  }else{
+    const hits=[];
+    D.sectors.forEach((s,i)=>["stock","etf"].forEach(k=>itemsOf(s,k).forEach(x=>{if((x.n+x.s+s.name).toLowerCase().includes(q))hits.push({x,s,i,k})})));
+    body.innerHTML=`<div class="sh-title">RESULTS・${hits.length}</div>`+(hits.map((h,n)=>{const qt=D.quotes[h.x.s];
+      return `<button class="res" data-n="${n}"><span>${esc(h.x.n)} <small>${h.x.s}${h.k=="etf"?"・ETF":""}・${esc(h.s.name)}</small></span><span class="${cls(qt?.pct)}">${qt?fmt(qt.price)+"　"+ptxt(qt.pct):"–"}</span></button>`}).join("")||'<p class="empty">找不到符合的項目</p>');
+    body.querySelectorAll(".res").forEach(b=>b.onclick=()=>{const h=hits[+b.dataset.n];closeSheet();si=h.i;kind=h.k;pick=h.x.s;dir=0;try{localStorage.setItem("si",si)}catch(e){}render(true)});
+  }
+}
+$("#q").oninput=renderSheet;$("#sx").onclick=closeSheet;$("#open2").onclick=openSheet;
+$("#prev").onclick=()=>go(si-1,-1);$("#next").onclick=()=>go(si+1,1);
+
+/* 手勢與鍵盤：左右滑動切換產業 */
+let tx=0,ty=0;
+const mainEl=$("#grid");
+mainEl.addEventListener("touchstart",e=>{tx=e.touches[0].clientX;ty=e.touches[0].clientY},{passive:true});
+mainEl.addEventListener("touchend",e=>{const dx=e.changedTouches[0].clientX-tx,dy=e.changedTouches[0].clientY-ty;
+  if(Math.abs(dx)>70&&Math.abs(dy)<45&&!pick)go(si+(dx<0?1:-1),dx<0?1:-1)},{passive:true});
+document.addEventListener("keydown",e=>{
+  if(e.key=="Escape"){if($("#sheet").classList.contains("open"))closeSheet();else if(pick)closeDetail();return}
+  if(e.target.tagName=="INPUT"||pick||$("#sheet").classList.contains("open"))return;
+  if(e.key=="ArrowRight")go(si+1,1);else if(e.key=="ArrowLeft")go(si-1,-1);else if(e.key=="/"){e.preventDefault();openSheet();$("#q").focus()}
+});
 load(true);setInterval(()=>load(false),60000);
 </script>
 </body>
