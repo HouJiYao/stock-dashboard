@@ -1,5 +1,12 @@
 import fs from "node:fs";
 
+// 單次請求逾時保護：一般 20 秒、Gemini 60 秒，避免某個請求卡住拖垮整個流程
+const _fetch = globalThis.fetch;
+globalThis.fetch = (url, opt = {}) =>
+  _fetch(url, { signal: AbortSignal.timeout(String(url).includes("generativelanguage") ? 60000 : 20000), ...opt });
+const T0 = Date.now();
+const lap = (m) => console.log(`[${Math.round((Date.now() - T0) / 1000)}s] ${m}`);
+
 const SITE = process.env.SITE_URL;
 const SLOW = process.env.SLOW === "true";
 const KEY = process.env.GEMINI_API_KEY;
@@ -54,6 +61,7 @@ if (Object.keys(fresh).length < ALL.length / 2) {
 }
 if (!Object.keys(fresh).length) { console.error("no quotes; abort"); process.exit(1); }
 
+lap(`報價完成（${Object.keys(fresh).length}/${ALL.length} 檔）`);
 const now = Date.now();
 const quotes = {};
 for (const { s } of ALL) {
@@ -81,8 +89,12 @@ async function news(st) {
     return { title: g("title"), url: g("link"), src: g("source"), t: Date.parse(g("pubDate")) || null };
   });
 }
+const fTotal = ALL.filter((x) => need(x.s)).length;
+let fDone = 0;
+if (fTotal) lap(`開始抓基本面與新聞，共 ${fTotal} 檔`);
 for (const st of ALL) {
   if (!need(st.s)) continue;
+  console.log(`[基本面/新聞] ${++fDone}/${fTotal} ${st.s} ${st.n}`);
   if (st.e) {
     let items = fundamentals[st.s]?.news || [];
     try { items = await news(st); } catch (e) { console.error("news", st.s, e.message); }
@@ -99,6 +111,8 @@ for (const st of ALL) {
     mcap: shares && price ? shares * price : null, news: items, updated: now };
 }
 
+if (fTotal) lap("基本面與新聞完成");
+
 // 模型下架（404）時，自動從 ListModels 挑選可用的 flash 模型
 async function pickModel() {
   try {
@@ -113,37 +127,69 @@ async function pickModel() {
 // AI 分析（Gemini 免費額度，每日一次）
 const analysis = { ...(prev.analysis || {}) };
 if (KEY) {
-  for (const st of ALL) {
-    if (!(SLOW || !analysis[st.s])) continue;
+  const aiTotal = ALL.filter((x) => SLOW || !analysis[x.s]).length;
+  let aiDone = 0;
+  lap(`開始 AI 分析，共 ${aiTotal} 檔，型號 ${MODEL}`);
+  const buildPrompt = (st) => {
     const q = quotes[st.s], f = fundamentals[st.s] || {};
     const heads = (f.news || []).map((n) => "- " + n.title).join("\n") || "（無）";
     const recent = (q?.series || []).filter((_, i) => i % 5 === 0).map((x) => x.p).slice(-30).join(", ");
-    const prompt = st.e ? `請以繁體中文，為台股 ETF「${st.n}（${st.s}）」寫約150字的當前分析。最新價 ${q?.price}，漲跌幅 ${q?.pct?.toFixed(2)}%，近期價格序列：${recent}。近期新聞標題：\n${heads}\n` +
+    return st.e ? `請以繁體中文，為台股 ETF「${st.n}（${st.s}）」寫約150字的當前分析。最新價 ${q?.price}，漲跌幅 ${q?.pct?.toFixed(2)}%，近期價格序列：${recent}。近期新聞標題：\n${heads}\n` +
       `內容含：追蹤主題與主要成分重點、走勢觀察、新聞重點、適合的配置角色、需留意的風險。成分股與規模若不確定請說明不確定，不要編造數字，結尾註明僅供參考、非投資建議。` :
       `請以繁體中文，為台股「${st.n}（${st.s}）」寫約150字的當前分析。最新價 ${q?.price}，漲跌幅 ${q?.pct?.toFixed(2)}%，近期價格序列：${recent}。` +
       `基本面：本益比 ${f.pe ?? "無資料"}、股價淨值比 ${f.pb ?? "無資料"}、殖利率 ${f.yield ?? "無資料"}%。近期新聞標題：\n${heads}\n` +
       `內容含：走勢觀察、基本面評價、新聞重點、產業地位、需留意的風險。只依據提供的數據、標題與一般知識，標題以外的新聞細節不要編造，結尾註明僅供參考、非投資建議。`;
-    for (let attempt = 0; attempt < 2; attempt++) {
+  };
+  // 429／5xx（含 503 高需求）採指數退避重試：10、20、40、60 秒
+  const RETRYABLE = new Set([429, 500, 502, 503, 504]);
+  async function generate(st) {
+    const prompt = buildPrompt(st);
+    for (let attempt = 0; attempt < 4; attempt++) {
       try {
         const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${KEY}`, {
           method: "POST", headers: { "content-type": "application/json" },
           body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
         });
-        if (res.status === 429) { await sleep(30000); continue; }
         if (res.status === 404) {
           const alt = await pickModel();
           if (alt && alt !== MODEL) { console.log(`model ${MODEL} unavailable, switching to ${alt}`); MODEL = alt; continue; }
         }
+        if (RETRYABLE.has(res.status)) {
+          const wait = Math.min(10000 * 2 ** attempt, 60000);
+          console.log(`  … ${st.s} 伺服器忙碌（${res.status}），${wait / 1000} 秒後重試（${attempt + 1}/4）`);
+          await sleep(wait); continue;
+        }
         const j = await res.json();
         const text = j.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("");
-        if (text) analysis[st.s] = { text, updated: now };
-        else console.error("gemini empty", st.s, JSON.stringify(j).slice(0, 200));
-        break;
-      } catch (e) { console.error("gemini", st.s, e.message); break; }
+        if (text) { analysis[st.s] = { text, updated: now }; console.log(`  ✓ ${st.s} 完成（${text.length} 字）`); return true; }
+        console.error("gemini empty", st.s, JSON.stringify(j).slice(0, 200));
+        return false;
+      } catch (e) {
+        console.error(`  ✗ ${st.s} ${e.name === "TimeoutError" ? "逾時" : e.message}，重試（${attempt + 1}/4）`);
+        await sleep(5000);
+      }
     }
+    return false;
+  }
+
+  const failed = [];
+  for (const st of ALL) {
+    if (!(SLOW || !analysis[st.s])) continue;
+    console.log(`[AI 分析] ${++aiDone}/${aiTotal} ${st.s} ${st.n} …`);
+    if (!(await generate(st))) failed.push(st);
     await sleep(5000);
+  }
+  if (failed.length) {
+    lap(`第一輪有 ${failed.length} 檔失敗，等待 60 秒後補跑（失敗者沿用舊分析）`);
+    await sleep(60000);
+    for (const st of failed) {
+      console.log(`[補跑] ${st.s} ${st.n} …`);
+      await generate(st);
+      await sleep(8000);
+    }
   }
 }
 
+lap("AI 分析階段結束");
 fs.writeFileSync("public/data.json", JSON.stringify({ updated: now, sectors: SECTORS, quotes, fundamentals, analysis }));
-console.log("done", Object.keys(quotes).length, "quotes");
+lap(`全部完成：${Object.keys(quotes).length} 檔報價、${Object.keys(analysis).length} 篇分析`);
