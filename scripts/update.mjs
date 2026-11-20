@@ -3,7 +3,7 @@ import fs from "node:fs";
 // 單次請求逾時保護：一般 20 秒、Gemini 60 秒，避免某個請求卡住拖垮整個流程
 const _fetch = globalThis.fetch;
 globalThis.fetch = (url, opt = {}) =>
-  _fetch(url, { signal: AbortSignal.timeout(String(url).includes("generativelanguage") ? 60000 : 20000), ...opt });
+  _fetch(url, { signal: AbortSignal.timeout(String(url).includes("generativelanguage") ? 90000 : 20000), ...opt });
 const T0 = Date.now();
 const lap = (m) => console.log(`[${Math.round((Date.now() - T0) / 1000)}s] ${m}`);
 
@@ -130,63 +130,76 @@ if (KEY) {
   const aiTotal = ALL.filter((x) => SLOW || !analysis[x.s]).length;
   let aiDone = 0;
   lap(`開始 AI 分析，共 ${aiTotal} 檔，型號 ${MODEL}`);
-  const buildPrompt = (st) => {
+  // 優化：每批 6 檔合併成 1 次請求（56 次 → 約 10 次），並加上熔斷與時間預算
+  const BATCH = 6;
+  const AI_BUDGET_MS = (parseFloat(process.env.AI_BUDGET_MIN) || 12) * 60000;
+  const aiStart = Date.now();
+  const todo = ALL.filter((x) => SLOW || !analysis[x.s]);
+  const line = (st) => {
     const q = quotes[st.s], f = fundamentals[st.s] || {};
-    const heads = (f.news || []).map((n) => "- " + n.title).join("\n") || "（無）";
-    const recent = (q?.series || []).filter((_, i) => i % 5 === 0).map((x) => x.p).slice(-30).join(", ");
-    return st.e ? `請以繁體中文，為台股 ETF「${st.n}（${st.s}）」寫約150字的當前分析。最新價 ${q?.price}，漲跌幅 ${q?.pct?.toFixed(2)}%，近期價格序列：${recent}。近期新聞標題：\n${heads}\n` +
-      `內容含：追蹤主題與主要成分重點、走勢觀察、新聞重點、適合的配置角色、需留意的風險。成分股與規模若不確定請說明不確定，不要編造數字，結尾註明僅供參考、非投資建議。` :
-      `請以繁體中文，為台股「${st.n}（${st.s}）」寫約150字的當前分析。最新價 ${q?.price}，漲跌幅 ${q?.pct?.toFixed(2)}%，近期價格序列：${recent}。` +
-      `基本面：本益比 ${f.pe ?? "無資料"}、股價淨值比 ${f.pb ?? "無資料"}、殖利率 ${f.yield ?? "無資料"}%。近期新聞標題：\n${heads}\n` +
-      `內容含：走勢觀察、基本面評價、新聞重點、產業地位、需留意的風險。只依據提供的數據、標題與一般知識，標題以外的新聞細節不要編造，結尾註明僅供參考、非投資建議。`;
+    const heads = (f.news || []).slice(0, 3).map((n) => n.title).join("；") || "無";
+    const recent = (q?.series || []).filter((_, i) => i % 5 === 0).map((x) => x.p).slice(-20).join(",");
+    const fund = st.e ? "" : `｜本益比 ${f.pe ?? "無資料"}｜股價淨值比 ${f.pb ?? "無資料"}｜殖利率 ${f.yield ?? "無資料"}%`;
+    return `- 代號 ${st.s}｜${st.n}｜${st.e ? "ETF" : "個股"}｜現價 ${q?.price}｜漲跌 ${q?.pct?.toFixed(2)}%｜近期價格 ${recent}${fund}｜新聞：${heads}`;
   };
-  // 429／5xx（含 503 高需求）採指數退避重試：10、20、40、60 秒
+  const batchPrompt = (batch) =>
+    `你是台股分析助理。請以繁體中文，為下列每一檔各寫約120字的當前分析：走勢觀察、${"個股看基本面評價、ETF看追蹤主題與成分重點"}、新聞重點、需留意的風險。` +
+    `只依據提供的數據、新聞標題與一般知識；不確定的資訊請說明不確定，不要編造數字與新聞細節；每則結尾註明僅供參考、非投資建議。\n` +
+    `只輸出一個 JSON 物件，鍵為代號、值為該檔的分析文字，不要輸出其他文字。\n${batch.map(line).join("\n")}`;
+
+  // 429／5xx 指數退避重試；若為「每日額度用完」則立刻放棄
   const RETRYABLE = new Set([429, 500, 502, 503, 504]);
-  async function generate(st) {
-    const prompt = buildPrompt(st);
+  async function callGemini(prompt) {
     for (let attempt = 0; attempt < 4; attempt++) {
       try {
         const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${KEY}`, {
           method: "POST", headers: { "content-type": "application/json" },
-          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { responseMimeType: "application/json" } }),
         });
         if (res.status === 404) {
           const alt = await pickModel();
           if (alt && alt !== MODEL) { console.log(`model ${MODEL} unavailable, switching to ${alt}`); MODEL = alt; continue; }
         }
         if (RETRYABLE.has(res.status)) {
+          const body = await res.text();
+          if (res.status === 429 && /PerDay|per day|daily/i.test(body)) throw new Error("QUOTA_DAY");
           const wait = Math.min(10000 * 2 ** attempt, 60000);
-          console.log(`  … ${st.s} 伺服器忙碌（${res.status}），${wait / 1000} 秒後重試（${attempt + 1}/4）`);
+          console.log(`  … 伺服器忙碌或限流（${res.status}），${wait / 1000} 秒後重試（${attempt + 1}/4）`);
           await sleep(wait); continue;
         }
         const j = await res.json();
-        const text = j.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("");
-        if (text) { analysis[st.s] = { text, updated: now }; console.log(`  ✓ ${st.s} 完成（${text.length} 字）`); return true; }
-        console.error("gemini empty", st.s, JSON.stringify(j).slice(0, 200));
-        return false;
+        return j.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") || null;
       } catch (e) {
-        console.error(`  ✗ ${st.s} ${e.name === "TimeoutError" ? "逾時" : e.message}，重試（${attempt + 1}/4）`);
+        if (e.message === "QUOTA_DAY") throw e;
+        console.error(`  ✗ ${e.name === "TimeoutError" ? "逾時" : e.message}，重試（${attempt + 1}/4）`);
         await sleep(5000);
       }
     }
-    return false;
+    return null;
   }
 
-  const failed = [];
-  for (const st of ALL) {
-    if (!(SLOW || !analysis[st.s])) continue;
-    console.log(`[AI 分析] ${++aiDone}/${aiTotal} ${st.s} ${st.n} …`);
-    if (!(await generate(st))) failed.push(st);
-    await sleep(5000);
-  }
-  if (failed.length) {
-    lap(`第一輪有 ${failed.length} 檔失敗，等待 60 秒後補跑（失敗者沿用舊分析）`);
-    await sleep(60000);
-    for (const st of failed) {
-      console.log(`[補跑] ${st.s} ${st.n} …`);
-      await generate(st);
-      await sleep(8000);
+  let fails = 0;
+  const nBatch = Math.ceil(todo.length / BATCH);
+  for (let i = 0; i < todo.length; i += BATCH) {
+    if (Date.now() - aiStart > AI_BUDGET_MS) { lap("AI 分析超過時間預算，停止（其餘沿用舊分析）"); break; }
+    const batch = todo.slice(i, i + BATCH);
+    console.log(`[AI 分析] 批次 ${i / BATCH + 1}/${nBatch}：${batch.map((x) => x.s).join(", ")}`);
+    let ok = 0;
+    try {
+      const text = await callGemini(batchPrompt(batch));
+      const obj = text ? JSON.parse(text.replace(/^```json|```$/g, "").trim()) : {};
+      for (const st of batch) {
+        const t = obj[st.s];
+        if (typeof t === "string" && t.trim()) { analysis[st.s] = { text: t.trim(), updated: now }; ok++; }
+      }
+    } catch (e) {
+      if (e.message === "QUOTA_DAY") { lap("Gemini 每日額度已用完，停止 AI 分析（其餘沿用舊分析）"); break; }
+      console.error("  ✗ 批次失敗：", e.message);
     }
+    console.log(`  ✓ ${ok}/${batch.length} 檔完成`);
+    fails = ok ? 0 : fails + 1;
+    if (fails >= 2) { lap("連續 2 批失敗，停止 AI 分析（其餘沿用舊分析，下次執行會再補）"); break; }
+    await sleep(8000);
   }
 }
 
