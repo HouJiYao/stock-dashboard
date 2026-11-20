@@ -72,6 +72,37 @@ for (const { s } of ALL) {
   } else if (old) quotes[s] = old;
 }
 
+// 走勢圖：Yahoo Finance 免費圖表介面（當日 5 分、近 5 日 15 分、近 3 月日線）
+const charts = { ...(prev.charts || {}) };
+async function yahoo(code, range, interval) {
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${code}.TW?range=${range}&interval=${interval}&includePrePost=false`;
+  let j;
+  try { j = await getJSON(url, { headers: UA }); } catch { await sleep(1500); j = await getJSON(url, { headers: UA }); }
+  const r = j.chart?.result?.[0];
+  const ts = r?.timestamp || [], cl = r?.indicators?.quote?.[0]?.close || [];
+  const pts = [];
+  ts.forEach((t, i) => { if (cl[i] != null) pts.push({ t: t * 1000, p: +cl[i].toFixed(2) }); });
+  return { pts, prev: r?.meta?.chartPreviousClose ?? null };
+}
+let cOk = 0, cFail = 0, cErr = "";
+const queue = [...ALL];
+await Promise.all(Array.from({ length: 5 }, async () => {
+  while (queue.length) {
+    const st = queue.shift();
+    try {
+      const c = { ...(charts[st.s] || {}) };
+      const d1 = await yahoo(st.s, "1d", "5m");
+      if (d1.pts.length) { c.d1 = d1.pts; if (d1.prev != null) c.prev = d1.prev; }
+      if (SLOW || !c.d5) {
+        const d5 = await yahoo(st.s, "5d", "15m"); if (d5.pts.length) c.d5 = d5.pts;
+        const m3 = await yahoo(st.s, "3mo", "1d"); if (m3.pts.length) c.m3 = m3.pts;
+      }
+      charts[st.s] = c; cOk++;
+    } catch (e) { cFail++; cErr ||= e.message; }
+  }
+}));
+lap(`走勢圖完成：成功 ${cOk}、失敗 ${cFail}${cErr ? "（" + cErr + "）" : ""}`);
+
 // 基本面 + 新聞（每日一次，或首次缺資料時）
 const fundamentals = { ...(prev.fundamentals || {}) };
 const need = (s) => SLOW || !fundamentals[s];
@@ -204,5 +235,5 @@ if (KEY) {
 }
 
 lap("AI 分析階段結束");
-fs.writeFileSync("public/data.json", JSON.stringify({ updated: now, sectors: SECTORS, quotes, fundamentals, analysis }));
+fs.writeFileSync("public/data.json", JSON.stringify({ updated: now, sectors: SECTORS, quotes, charts, fundamentals, analysis }));
 lap(`全部完成：${Object.keys(quotes).length} 檔報價、${Object.keys(analysis).length} 篇分析`);

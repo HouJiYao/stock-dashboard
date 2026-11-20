@@ -94,7 +94,7 @@ svg{width:100%;height:100%;display:block}
 .dh h2{margin:0;font:700 22px "Chakra Petch","Noto Sans TC",sans-serif;letter-spacing:.05em}
 .x{width:44px;height:44px;border-radius:10px;border:1px solid var(--line);background:rgba(255,255,255,.04);font-size:18px}
 .x:hover{border-color:var(--cy)}
-.chartbox{height:240px;margin-top:14px}
+.chartbox{height:240px;margin-top:12px}.rng{margin-top:14px}.rng button{padding:5px 14px;font-size:13px;min-height:36px}
 .kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin:18px 0}
 .kv div{border:1px solid var(--line);border-radius:10px;padding:8px 12px;background:rgba(255,255,255,.02)}
 .kv span{display:block;color:var(--mute);font-size:12px}
@@ -172,7 +172,7 @@ h3{margin:22px 0 4px;font:500 12px "JetBrains Mono",monospace;letter-spacing:.2e
 <script>
 const getData=()=>fetch("/data.json?t="+Date.now()).then(r=>r.json());//@GETDATA
 const UP="#ff4d6d",DOWN="#19e6a1",reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;
-let D=null,si=0,kind="stock",pick=null,charts=[],last={},typer=null,dir=0;
+let D=null,si=0,kind="stock",pick=null,charts=[],last={},typer=null,dir=0,rng="d1",lastPick=null;
 try{si=+localStorage.getItem("si")||0}catch(e){}
 const $=s=>document.querySelector(s);
 const fmt=n=>n==null?"–":Number(n).toLocaleString("en-US",{maximumFractionDigits:2});
@@ -204,16 +204,26 @@ function spark(p,up,anim){
   const pts=p.map((v,i)=>`${(i*dx).toFixed(1)},${(h-5-(v-mn)/(mx-mn||1)*(h-10)).toFixed(1)}`).join(" ");
   return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${c}" stop-opacity=".35"/><stop offset="1" stop-color="${c}" stop-opacity="0"/></linearGradient></defs><polygon class="${anim?"fade":""}" points="0,${h} ${pts} ${w},${h}" fill="url(#${id})"/><polyline class="${anim?"draw":""}" pathLength="1" points="${pts}" fill="none" stroke="${c}" stroke-width="2" stroke-linejoin="round"/></svg>`;
 }
-function bigChart(box,series,up,anim){
+const RNG=[["d1","當日"],["d5","5日"],["m3","3個月"],["acc","累積"]];
+const fT={d1:t=>new Date(t).toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit",hour12:false}),
+  d5:t=>new Date(t).toLocaleString("zh-TW",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit",hour12:false}),
+  m3:t=>new Date(t).toLocaleDateString("zh-TW",{month:"numeric",day:"numeric"})};fT.acc=fT.d5;
+const ptsOf=(code,r)=>r=="acc"?D.quotes[code]?.series:D.charts?.[code]?.[r];
+function drawChart(anim){
+  const code=pick,q=D.quotes[code],box=$("#dr .chartbox");if(!box||!q)return;
+  charts.forEach(c=>c.destroy());charts=[];box.innerHTML="";
+  const pts=ptsOf(code,rng);if(!pts||pts.length<2){box.innerHTML='<p class="note">尚無足夠的走勢資料。</p>';return}
+  const ref=rng=="d1"?D.charts?.[code]?.prev:null,base=ref!=null?ref:pts[0].p,up=pts[pts.length-1].p>=base;
   const cv=document.createElement("canvas");box.append(cv);const c=up?UP:DOWN;
-  charts.push(new Chart(cv,{type:"line",
-    data:{labels:series.map(x=>new Date(x.t).toLocaleString("zh-TW",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"})),
-      datasets:[{data:series.map(x=>x.p),borderColor:c,borderWidth:2,pointRadius:0,pointHoverRadius:5,tension:.3,fill:true,
-        backgroundColor:ctx=>{const a=ctx.chart.chartArea;if(!a)return c+"22";const g=ctx.chart.ctx.createLinearGradient(0,a.top,0,a.bottom);g.addColorStop(0,c+"55");g.addColorStop(1,c+"00");return g}}]},
-    options:{maintainAspectRatio:false,animation:reduce||!anim?false:{duration:900},interaction:{mode:"index",intersect:false},
-      plugins:{legend:{display:false},tooltip:{backgroundColor:"rgba(8,12,24,.95)",borderColor:"rgba(34,211,238,.5)",borderWidth:1,titleColor:"#9fb0cc",bodyColor:"#e6edf7"}},
+  const ds=[{data:pts.map(x=>x.p),borderColor:c,borderWidth:2,pointRadius:0,pointHoverRadius:5,tension:.2,fill:true,
+    backgroundColor:ctx=>{const a=ctx.chart.chartArea;if(!a)return c+"22";const g=ctx.chart.ctx.createLinearGradient(0,a.top,0,a.bottom);g.addColorStop(0,c+"55");g.addColorStop(1,c+"00");return g}}];
+  if(ref!=null)ds.push({data:pts.map(()=>ref),borderColor:"rgba(160,175,200,.55)",borderDash:[4,4],borderWidth:1,pointRadius:0,fill:false});
+  charts.push(new Chart(cv,{type:"line",data:{labels:pts.map(x=>fT[rng](x.t)),datasets:ds},
+    options:{maintainAspectRatio:false,animation:reduce||!anim?false:{duration:700},interaction:{mode:"index",intersect:false},
+      plugins:{legend:{display:false},tooltip:{filter:i=>i.datasetIndex===0,backgroundColor:"rgba(8,12,24,.95)",borderColor:"rgba(34,211,238,.5)",borderWidth:1,titleColor:"#9fb0cc",bodyColor:"#e6edf7"}},
       scales:{x:{ticks:{color:"#7d8aa5",maxTicksLimit:5},grid:{color:"rgba(255,255,255,.05)"}},y:{ticks:{color:"#7d8aa5"},grid:{color:"rgba(255,255,255,.05)"}}}}}));
 }
+const cardSeries=(code,q)=>{const d=D.charts?.[code]?.d1;return (d&&d.length>=2?d:q.series.slice(-80)).map(x=>x.p)};
 function ticker(){
   const seen=new Set(),items=D.sectors.flatMap(s=>[...(s.stocks||[]),...(s.etfs||[])]).filter(s=>D.quotes[s.s]&&!seen.has(s.s)&&seen.add(s.s)).map(s=>{const q=D.quotes[s.s],u=q.change>=0;
     return `<span>${s.s} ${esc(s.n)} <b class="${u?"up":"down"}">${fmt(q.price)} ${u?"▲":"▼"}${fmt(Math.abs(q.pct))}%</b></span>`}).join("");
@@ -255,7 +265,7 @@ function renderGrid(anim){
     const u=q.change>=0,c=u?"up":"down";
     b.innerHTML=`<div class="c-info"><b>${esc(st.n)}</b><span class="sym">${st.s}</span>${tag}<div class="sym pe">${st.e?"今日 "+fmt(q.lo)+" – "+fmt(q.hi):"PE "+fmt(f.pe)+"・殖利率 "+fmt(f.yield)+"%"}</div></div>
       <div class="c-px"><div class="price ${c}">${fmt(q.price)}</div><div class="chg ${c}">${u?"▲":"▼"} ${fmt(Math.abs(q.change))}（${fmt(Math.abs(q.pct))}%）</div></div>
-      <div class="spark">${spark(q.series.slice(-80).map(x=>x.p),u,anim)}</div>`;
+      <div class="spark">${spark(cardSeries(st.s,q),u,anim)}</div>`;
     const pe=b.querySelector(".price");
     if(anim)count(pe,q.price);else if(last[st.s]!=null&&last[st.s]!==q.price)pe.classList.add(q.price>last[st.s]?"fu":"fd");
     last[st.s]=q.price;
@@ -274,22 +284,25 @@ function renderDetail(anim){
     :[["本益比",fmt(f.pe)],["股價淨值比",fmt(f.pb)],["殖利率",f.yield==null?"–":fmt(f.yield)+"%"],["市值（TWD）",big(f.mcap)],["今日最高",fmt(q?.hi)],["今日最低",fmt(q?.lo)]])
     .map(([k,v])=>`<div><span>${k}</span><b>${v}</b></div>`).join("");
   const news=(f.news||[]).map(n=>`<li><a href="${esc(n.url)}" target="_blank" rel="noopener noreferrer">${esc(n.title)}</a><br><small>${esc(n.src)}${n.t?"・"+new Date(n.t).toLocaleDateString("zh-TW"):""}</small></li>`).join("")||"<li>暫無新聞資料</li>";
+  if(code!==lastPick){rng="d1";lastPick=code}
+  if(!((ptsOf(code,rng)||[]).length>1))rng=(ptsOf(code,"acc")||[]).length>1?"acc":rng;
   const dr=$("#dr"),keep=dr.scrollTop;
   dr.innerHTML=`<div class="dh"><div><div class="sym">${code}${st.e?" ・ ETF":""}</div><h2>${esc(st.n)}</h2></div><button class="x" id="dx" aria-label="關閉">✕</button></div>
     ${q?`<div style="margin-top:14px"><span class="price ${u?"up":"down"}" style="margin:0">${fmt(q.price)}</span> <span class="chg ${u?"up":"down"}">${u?"▲":"▼"} ${fmt(Math.abs(q.change))}（${fmt(Math.abs(q.pct))}%）</span></div>`:""}
-    <div class="chartbox"></div><div class="kv">${kv}</div>
+    <div class="seg rng" role="group" aria-label="走勢區間">${RNG.map(([k,n])=>`<button data-r="${k}" aria-pressed="${k==rng}" ${(ptsOf(code,k)||[]).length>1?"":"disabled"}>${n}</button>`).join("")}</div><div class="chartbox"></div><div class="kv">${kv}</div>
     <h3>AI ANALYSIS</h3><div class="ai"></div>
     <h3>NEWS FEED</h3><ul class="news">${news}</ul>
     <p class="note">${a?"分析更新於 "+new Date(a.updated).toLocaleString("zh-TW")+"。":""}AI 生成內容僅供參考，不構成投資建議。</p>`;
   $("#detail").classList.add("open");document.body.classList.add("lock");
   $("#dx").onclick=closeDetail;
-  if(q)bigChart(dr.querySelector(".chartbox"),q.series,u,anim);
+  dr.querySelectorAll(".rng button").forEach(b=>b.onclick=()=>{rng=b.dataset.r;dr.querySelectorAll(".rng button").forEach(x=>x.setAttribute("aria-pressed",x===b));drawChart(true)});
+  drawChart(anim);
   const ai=dr.querySelector(".ai"),txt=a?a.text:"今日分析尚未產生，將於下個交易日早上 8:30 更新。";
   if(anim&&!reduce){let i=0;ai.classList.add("caret");typer=setInterval(()=>{ai.textContent=txt.slice(0,++i);if(i>=txt.length){clearInterval(typer);ai.classList.remove("caret")}},14)}
   else ai.textContent=txt;
   if(anim)dr.scrollTop=0;else dr.scrollTop=keep;
 }
-function closeDetail(){pick=null;clearInterval(typer);$("#detail").classList.remove("open");if(!$("#sheet").classList.contains("open"))document.body.classList.remove("lock")}
+function closeDetail(){pick=null;lastPick=null;clearInterval(typer);$("#detail").classList.remove("open");if(!$("#sheet").classList.contains("open"))document.body.classList.remove("lock")}
 $("#scrim").onclick=closeDetail;
 
 /* 產業選單 + 搜尋 */
