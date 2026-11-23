@@ -205,7 +205,8 @@ async function pickModel() {
 
 // AI 分析（Gemini 免費額度，每日一次）
 const analysis = { ...(prev.analysis || {}) };
-if (KEY) {
+// 只在每日 08:30（或手動 slow=true）做 AI 分析；盤中報價更新不補做，避免拖慢部署
+if (KEY && (SLOW || process.env.AI === "true")) {
   const aiTotal = ALL.filter((x) => aiSet.has(x.s) && (SLOW || !analysis[x.s])).length;
   let aiDone = 0;
   lap(`開始 AI 分析，共 ${aiTotal} 檔，型號 ${MODEL}`);
