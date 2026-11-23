@@ -80,7 +80,7 @@ async function quotesMIS() {
       // 兩筆成交之間 z 會是 "-"：改用最佳買價／賣價／開盤價，最後才退回昨收
       const first = (v) => num(String(v ?? "").split("_")[0]);
       const last = num(m.z) ?? first(m.b) ?? first(m.a) ?? num(m.o) ?? y;
-      out[m.c] = { price: last, prev: y, change: last - y, pct: ((last - y) / y) * 100, hi: num(m.h), lo: num(m.l) };
+      out[m.c] = { price: last, prev: y, change: last - y, pct: ((last - y) / y) * 100, hi: num(m.h), lo: num(m.l), lu: num(m.u), ld: num(m.w) };
     }
     await sleep(300);
   }
