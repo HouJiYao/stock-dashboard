@@ -14,6 +14,21 @@
 3. **Gemini 免費金鑰**：到 https://aistudio.google.com/app/apikey 建立，於 GitHub → Settings → Secrets and variables → Actions 新增 `GEMINI_API_KEY`。（不設則略過 AI 分析）
 4. 到 GitHub → Actions → update-data → **Run workflow**（slow 保持 true）。完成後開啟 https://stock-dashboard-a2324.web.app
 
+## 盤中即時報價（富果 Fugle API + Cloudflare Worker，免費）
+網頁在盤中（平日 08:55–13:35）每 20 秒向 Worker 取「目前畫面上」個股／ETF 的即時報價；其餘時間照舊讀 `data.json`。
+1. 註冊 Cloudflare（免費）。在本資料夾的 `worker` 目錄執行：
+   ```bash
+   cd worker
+   npx wrangler login
+   npx wrangler secret put FUGLE_API_KEY   # 貼上富果 API 金鑰
+   npx wrangler deploy
+   ```
+2. 部署完成會顯示網址，例如 `https://stock-live.xxx.workers.dev`。先開 `…/debug?symbol=2330` 確認富果有回資料（status 200）。
+3. 把網址填到 `public/index.html` 的 `const LIVE_URL=""`，再部署 Firebase（推上 GitHub 等下次 Actions，或 `firebase deploy --only hosting`）。
+- 金鑰只存在 Cloudflare secret，**不要寫進任何檔案**（本儲存庫是公開的）。
+- 若方案支援全市場快照（`snapshot`），一次請求拿全部；不支援時自動改逐檔查詢，每分鐘最多 50 次。
+- 只允許 `wrangler.toml` 的 `ALLOW_ORIGINS` 網域呼叫 Worker。
+
 ## 排程（台北時間，平日）
 - 08:30 新聞、基本面、AI 分析 ＋ 報價
 - 09:00–13:59 每 10 分鐘更新報價（GitHub 排程常延遲數分鐘到十幾分鐘）

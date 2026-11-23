@@ -1,0 +1,9 @@
+name = "stock-live"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+[vars]
+# 只允許你的儀表板網域呼叫（逗號分隔）；本機 localhost 一律允許
+ALLOW_ORIGINS = "https://stock-dashboard-a2324.web.app,https://stock-dashboard-a2324.firebaseapp.com"
+
+# 金鑰不要寫在這裡，請執行：npx wrangler secret put FUGLE_API_KEY

@@ -172,6 +172,9 @@ h3{margin:22px 0 4px;font:500 12px "JetBrains Mono",monospace;letter-spacing:.2e
 </div>
 <script>
 const getData=()=>fetch("/data.json?t="+Date.now()).then(r=>r.json());//@GETDATA
+// 即時報價：部署 worker/ 之後，把網址填在這裡（結尾不要斜線），例如 https://stock-live.你的帳號.workers.dev
+const LIVE_URL="";
+let LIVE={},liveAt=0,polling=false;
 const UP="#ff4d6d",DOWN="#19e6a1",reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;
 let D=null,si=0,kind="stock",pick=null,charts=[],last={},typer=null,dir=0,rng="d1",lastPick=null,LONG=null,longP=null;
 try{si=+localStorage.getItem("si")||0}catch(e){}
@@ -188,7 +191,7 @@ function findItem(code){for(const s of D.sectors)for(const x of [...(s.stocks||[
 setInterval(()=>$("#clock").textContent=new Date().toLocaleTimeString("zh-TW",{hour12:false}),1000);
 
 async function load(first){
-  try{D=await getData();if(si>=D.sectors.length)si=0;fixKind();render(first);ticker()}
+  try{D=await getData();applyLive();if(si>=D.sectors.length)si=0;fixKind();render(first);ticker();if(first)pollLive()}
   catch(e){$("#grid").innerHTML='<p class="empty">資料載入中或暫時無法取得，請稍後重新整理。</p>'}
 }
 function fixKind(){const s=sec();if(!itemsOf(s,kind).length)kind=itemsOf(s,"stock").length?"stock":"etf"}
@@ -238,6 +241,7 @@ function render(anim){
   renderNav(anim);renderHead();renderGrid(anim);
   if(pick)renderDetail(anim);
   if($("#sheet").classList.contains("open"))renderSheet();
+  if(anim)setTimeout(pollLive);
 }
 function renderNav(anim){
   const ch=$("#chips");
@@ -275,10 +279,10 @@ function renderGrid(anim){
     if(anim)count(pe,q.price);else if(last[st.s]!=null&&last[st.s]!==q.price)pe.classList.add(q.price>last[st.s]?"fu":"fd");
     last[st.s]=q.price;
     b.onpointermove=e=>{const r=b.getBoundingClientRect();b.style.setProperty("--mx",e.clientX-r.left+"px");b.style.setProperty("--my",e.clientY-r.top+"px")};
-    b.onclick=()=>{pick=st.s;renderDetail(true)};
+    b.onclick=()=>{pick=st.s;renderDetail(true);pollLive()};
     g.append(b);
   });
-  $("#stamp").textContent=latest?"最後更新 "+new Date(latest).toLocaleTimeString("zh-TW",{hour12:false}):"";
+  $("#stamp").textContent=latest?(Date.now()-liveAt<60000?"即時 ":"最後更新 ")+new Date(latest).toLocaleTimeString("zh-TW",{hour12:false}):"";
   dir=0;
 }
 function renderDetail(anim){
@@ -342,7 +346,34 @@ document.addEventListener("keydown",e=>{
   if(e.target.tagName=="INPUT"||pick||$("#sheet").classList.contains("open"))return;
   if(e.key=="ArrowRight")go(si+1,1);else if(e.key=="ArrowLeft")go(si-1,-1);else if(e.key=="/"){e.preventDefault();openSheet();$("#q").focus()}
 });
-load(true);setInterval(()=>load(false),60000);
+/* 盤中即時報價（富果 API 經 Cloudflare Worker）：只抓目前畫面上的個股，每 20 秒一次 */
+const tpe=t=>new Date(t+8*3600e3);
+const sameDay=(a,b)=>tpe(a).toISOString().slice(0,10)===tpe(b).toISOString().slice(0,10);
+function marketOpen(){const d=tpe(Date.now()),w=d.getUTCDay(),m=d.getUTCHours()*60+d.getUTCMinutes();return w>=1&&w<=5&&m>=535&&m<=815}
+function applyLive(){
+  if(!D)return;
+  for(const [s,l] of Object.entries(LIVE)){
+    const q=D.quotes[s];if(q&&(q.updated||0)>=l.t)continue;
+    D.quotes[s]={...(q||{series:[]}),...l,updated:l.t};
+    const c=(D.charts||(D.charts={}))[s]||(D.charts[s]={});
+    const d1=c.d1,lp=d1&&d1[d1.length-1];
+    if(lp&&sameDay(lp.t,l.t)){if(l.t-lp.t>=60000)d1.push({t:l.t,p:l.price});else if(l.t>lp.t)lp.p=l.price}
+  }
+}
+async function pollLive(){
+  if(!LIVE_URL||!D||polling||document.hidden||!marketOpen())return;
+  const set=new Set(itemsOf(sec(),kind).map(x=>x.s));if(pick)set.add(pick);
+  if(!set.size)return;
+  polling=true;
+  try{
+    const r=await fetch(LIVE_URL+"/quotes?symbols="+[...set].join(","),{cache:"no-store"});
+    const j=await r.json();
+    if(j.quotes&&Object.keys(j.quotes).length){Object.assign(LIVE,j.quotes);liveAt=Date.now();applyLive();render(false)}
+  }catch(e){}
+  polling=false;
+}
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)pollLive()});
+load(true);setInterval(()=>load(false),60000);setInterval(pollLive,20000);
 </script>
 </body>
 </html>
