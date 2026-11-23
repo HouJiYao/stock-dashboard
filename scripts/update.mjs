@@ -87,8 +87,16 @@ async function quotesMIS() {
   return out;
 }
 
+// 今天的台北日期（民國年格式，例如 1151123）
+const tpeDate = new Date(Date.now() + 8 * 3600e3);
+const rocToday = `${tpeDate.getUTCFullYear() - 1911}${String(tpeDate.getUTCMonth() + 1).padStart(2, "0")}${String(tpeDate.getUTCDate()).padStart(2, "0")}`;
+const sameTpeDay = (ms) => new Date(ms + 8 * 3600e3).toISOString().slice(0, 10) === tpeDate.toISOString().slice(0, 10);
+
+// 開放資料的收盤行情傍晚才換成當日，之前拿到的是上個交易日：日期不是今天就不用
 async function quotesDayClose() {
   const rows = await getJSON("https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL");
+  const date = rows.find((r) => r.Date)?.Date;
+  if (date !== rocToday) { console.log(`STOCK_DAY_ALL 日期 ${date ?? "未知"} 不是今天 ${rocToday}，略過`); return {}; }
   const m = Object.fromEntries(rows.map((r) => [r.Code, r]));
   const out = {};
   for (const { s } of ALL) {
@@ -102,22 +110,7 @@ async function quotesDayClose() {
 
 let fresh = {};
 try { fresh = await quotesMIS(); } catch (e) { console.error("MIS failed:", e.message); }
-if (Object.keys(fresh).length < ALL.length / 2) {
-  try { fresh = { ...(await quotesDayClose()), ...fresh }; console.log("using day-close fallback"); }
-  catch (e) { console.error("fallback failed:", e.message); }
-}
-if (!Object.keys(fresh).length) { console.error("no quotes; abort"); process.exit(1); }
-
-lap(`報價完成（${Object.keys(fresh).length}/${ALL.length} 檔）`);
-const now = Date.now();
-const quotes = {};
-for (const { s } of ALL) {
-  const old = prev.quotes?.[s];
-  if (fresh[s]) {
-    const series = (old?.series || []).concat({ t: now, p: fresh[s].price }).slice(-400);
-    quotes[s] = { ...fresh[s], series, updated: now };
-  } else if (old) quotes[s] = old;
-}
+lap(`證交所即時報價：${Object.keys(fresh).length}/${ALL.length} 檔`);
 
 // 走勢圖：Yahoo Finance 免費圖表介面（當日 5 分、近 5 日 15 分、近 3 月日線）
 const charts = Object.fromEntries(Object.entries(prev.charts || {}).map(([k, v]) => [k, { d1: v.d1, prev: v.prev }]));
@@ -130,9 +123,13 @@ async function yahoo(code, range, interval) {
   const ts = r?.timestamp || [], cl = r?.indicators?.quote?.[0]?.close || [];
   const pts = [];
   ts.forEach((t, i) => { if (cl[i] != null) pts.push({ t: t * 1000, p: +cl[i].toFixed(2) }); });
-  return { pts, prev: r?.meta?.chartPreviousClose ?? null };
+  const m = r?.meta || {};
+  return { pts, prev: m.chartPreviousClose ?? null,
+    quote: num(m.regularMarketPrice) != null && num(m.chartPreviousClose) != null && m.regularMarketTime
+      ? { price: num(m.regularMarketPrice), prev: num(m.chartPreviousClose), hi: num(m.regularMarketDayHigh), lo: num(m.regularMarketDayLow), t: m.regularMarketTime * 1000 } : null };
 }
 let cOk = 0, cFail = 0, cErr = "";
+const yq = {};   // Yahoo 的最新價（當日）
 const queue = [...ALL];
 await Promise.all(Array.from({ length: 5 }, async () => {
   while (queue.length) {
@@ -141,6 +138,7 @@ await Promise.all(Array.from({ length: 5 }, async () => {
       const c = { ...(charts[st.s] || {}) };
       const d1 = await yahoo(st.s, "1d", "5m");
       if (d1.pts.length) { c.d1 = d1.pts; if (d1.prev != null) c.prev = d1.prev; }
+      if (d1.quote && sameTpeDay(d1.quote.t)) yq[st.s] = d1.quote;
       if (SLOW || !long[st.s]?.d5) {
         const L = { ...(long[st.s] || {}) };
         const d5 = await yahoo(st.s, "5d", "15m"); if (d5.pts.length) L.d5 = d5.pts;
@@ -152,6 +150,27 @@ await Promise.all(Array.from({ length: 5 }, async () => {
   }
 }));
 lap(`走勢圖完成：成功 ${cOk}、失敗 ${cFail}${cErr ? "（" + cErr + "）" : ""}`);
+
+// 報價合併：證交所即時 > Yahoo（當日）> 開放資料收盤（當日）> 沿用上一版
+for (const [s, y] of Object.entries(yq)) {
+  if (fresh[s]) continue;
+  const ch = +(y.price - y.prev).toFixed(2);
+  fresh[s] = { price: y.price, prev: y.prev, change: ch, pct: y.prev ? (ch / y.prev) * 100 : 0, hi: y.hi, lo: y.lo };
+}
+if (Object.keys(fresh).length < ALL.length) {
+  try { fresh = { ...(await quotesDayClose()), ...fresh }; } catch (e) { console.error("day-close fallback failed:", e.message); }
+}
+if (!Object.keys(fresh).length && !prev.quotes) { console.error("no quotes; abort"); process.exit(1); }
+lap(`報價完成（${Object.keys(fresh).length}/${ALL.length} 檔，其餘沿用上一版）`);
+const now = Date.now();
+const quotes = {};
+for (const { s } of ALL) {
+  const old = prev.quotes?.[s];
+  if (fresh[s]) {
+    const series = (old?.series || []).concat({ t: now, p: fresh[s].price }).slice(-400);
+    quotes[s] = { ...fresh[s], series, updated: now };
+  } else if (old) quotes[s] = old;
+}
 
 // 基本面 + 新聞（每日一次，或首次缺資料時）
 const fundamentals = { ...(prev.fundamentals || {}) };
