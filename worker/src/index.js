@@ -18,14 +18,15 @@ const ms = (t) => { t = num(t); return t == null ? Date.now() : t > 1e14 ? Math.
 
 function normalize(r) {
   if (!r) return null;
-  const price = num(r.lastPrice) ?? num(r.closePrice) ?? num(r.lastTrade?.price) ?? num(r.lastTrial?.price);
+  // 只用真正成交價；開盤前的試撮價（lastTrial）不採用
+  const price = num(r.lastPrice) ?? num(r.closePrice) ?? num(r.lastTrade?.price);
   if (price == null) return null;
   const change = num(r.change);
   const prev = num(r.previousClose) ?? num(r.referencePrice) ?? (change != null ? +(price - change).toFixed(2) : null);
   if (prev == null) return null;
   const ch = +(price - prev).toFixed(2);
   return { price, prev, change: ch, pct: num(r.changePercent) ?? (prev ? (ch / prev) * 100 : 0),
-    hi: num(r.highPrice), lo: num(r.lowPrice), t: ms(r.lastUpdated) };
+    hi: num(r.highPrice), lo: num(r.lowPrice), t: ms(r.lastUpdated), d: r.date || null, closed: !!r.isClose };
 }
 
 async function fugle(path, key) {

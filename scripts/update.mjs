@@ -7,6 +7,14 @@ globalThis.fetch = (url, opt = {}) =>
 const T0 = Date.now();
 const lap = (m) => console.log(`[${Math.round((Date.now() - T0) / 1000)}s] ${m}`);
 
+// 台北時間與交易時段：pre 盤前／open 盤中 09:00–13:30／post 盤後／closed 週末
+const tpeDate = new Date(Date.now() + 8 * 3600e3);
+const rocToday = `${tpeDate.getUTCFullYear() - 1911}${String(tpeDate.getUTCMonth() + 1).padStart(2, "0")}${String(tpeDate.getUTCDate()).padStart(2, "0")}`;
+const sameTpeDay = (ms) => new Date(ms + 8 * 3600e3).toISOString().slice(0, 10) === tpeDate.toISOString().slice(0, 10);
+const tpeMin = tpeDate.getUTCHours() * 60 + tpeDate.getUTCMinutes(), tpeWd = tpeDate.getUTCDay();
+const PHASE = tpeWd < 1 || tpeWd > 5 ? "closed" : tpeMin < 540 ? "pre" : tpeMin < 810 ? "open" : "post";
+const PHASE_NAME = { pre: "盤前（用最新收盤）", open: "盤中（用即時價）", post: "盤後（用當日收盤）", closed: "休市（用最新收盤）" }[PHASE];
+
 const SITE = process.env.SITE_URL;
 const SLOW = process.env.SLOW === "true";
 const KEY = process.env.GEMINI_API_KEY;
@@ -79,7 +87,9 @@ async function quotesMIS() {
       const y = num(m.y); if (y == null) continue;
       // 兩筆成交之間 z 會是 "-"：改用最佳買價／賣價／開盤價，最後才退回昨收
       const first = (v) => num(String(v ?? "").split("_")[0]);
-      const last = num(m.z) ?? first(m.b) ?? first(m.a) ?? num(m.o) ?? y;
+      // 盤後 z 沒有值就不採用 MIS（交給 Yahoo／開放資料），避免把昨收當今天收盤
+      const last = PHASE === "open" ? num(m.z) ?? first(m.b) ?? first(m.a) ?? num(m.o) ?? y : num(m.z);
+      if (last == null) continue;
       out[m.c] = { price: last, prev: y, change: last - y, pct: ((last - y) / y) * 100, hi: num(m.h), lo: num(m.l), lu: num(m.u), ld: num(m.w) };
     }
     await sleep(300);
@@ -87,16 +97,12 @@ async function quotesMIS() {
   return out;
 }
 
-// 今天的台北日期（民國年格式，例如 1151123）
-const tpeDate = new Date(Date.now() + 8 * 3600e3);
-const rocToday = `${tpeDate.getUTCFullYear() - 1911}${String(tpeDate.getUTCMonth() + 1).padStart(2, "0")}${String(tpeDate.getUTCDate()).padStart(2, "0")}`;
-const sameTpeDay = (ms) => new Date(ms + 8 * 3600e3).toISOString().slice(0, 10) === tpeDate.toISOString().slice(0, 10);
-
 // 開放資料的收盤行情傍晚才換成當日，之前拿到的是上個交易日：日期不是今天就不用
 async function quotesDayClose() {
   const rows = await getJSON("https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL");
   const date = rows.find((r) => r.Date)?.Date;
-  if (date !== rocToday) { console.log(`STOCK_DAY_ALL 日期 ${date ?? "未知"} 不是今天 ${rocToday}，略過`); return {}; }
+  // 盤後只收當日資料；盤前／休市時它就是最新收盤，日期不限
+  if (PHASE === "post" && date !== rocToday) { console.log(`STOCK_DAY_ALL 日期 ${date ?? "未知"} 不是今天 ${rocToday}，略過`); return {}; }
   const m = Object.fromEntries(rows.map((r) => [r.Code, r]));
   const out = {};
   for (const { s } of ALL) {
@@ -109,7 +115,10 @@ async function quotesDayClose() {
 }
 
 let fresh = {};
-try { fresh = await quotesMIS(); } catch (e) { console.error("MIS failed:", e.message); }
+lap(`報價時段：${PHASE_NAME}`);
+if (PHASE === "open" || PHASE === "post") {   // 盤前的 MIS 是試撮價，不用
+  try { fresh = await quotesMIS(); } catch (e) { console.error("MIS failed:", e.message); }
+}
 lap(`證交所即時報價：${Object.keys(fresh).length}/${ALL.length} 檔`);
 
 // 走勢圖：Yahoo Finance 免費圖表介面（當日 5 分、近 5 日 15 分、近 3 月日線）
@@ -138,7 +147,8 @@ await Promise.all(Array.from({ length: 5 }, async () => {
       const c = { ...(charts[st.s] || {}) };
       const d1 = await yahoo(st.s, "1d", "5m");
       if (d1.pts.length) { c.d1 = d1.pts; if (d1.prev != null) c.prev = d1.prev; }
-      if (d1.quote && sameTpeDay(d1.quote.t)) yq[st.s] = d1.quote;
+      // 盤中／盤後只收當日價；盤前／休市時 Yahoo 回的就是最新一個交易日的收盤
+      if (d1.quote && (PHASE === "pre" || PHASE === "closed" || sameTpeDay(d1.quote.t))) yq[st.s] = d1.quote;
       if (SLOW || !long[st.s]?.d5) {
         const L = { ...(long[st.s] || {}) };
         const d5 = await yahoo(st.s, "5d", "15m"); if (d5.pts.length) L.d5 = d5.pts;
@@ -157,7 +167,7 @@ for (const [s, y] of Object.entries(yq)) {
   const ch = +(y.price - y.prev).toFixed(2);
   fresh[s] = { price: y.price, prev: y.prev, change: ch, pct: y.prev ? (ch / y.prev) * 100 : 0, hi: y.hi, lo: y.lo };
 }
-if (Object.keys(fresh).length < ALL.length) {
+if (PHASE !== "open" && Object.keys(fresh).length < ALL.length) {
   try { fresh = { ...(await quotesDayClose()), ...fresh }; } catch (e) { console.error("day-close fallback failed:", e.message); }
 }
 if (!Object.keys(fresh).length && !prev.quotes) { console.error("no quotes; abort"); process.exit(1); }

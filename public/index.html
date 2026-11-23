@@ -178,7 +178,7 @@ h3{margin:22px 0 4px;font:500 12px "JetBrains Mono",monospace;letter-spacing:.2e
 const getData=()=>fetch("/data.json?t="+Date.now()).then(r=>r.json());//@GETDATA
 // 即時報價：部署 worker/ 之後，把網址填在這裡（結尾不要斜線），例如 https://stock-live.你的帳號.workers.dev
 const LIVE_URL="https://stock-live.hou0226.workers.dev";
-let LIVE={},liveAt=0,polling=false;
+let LIVE={},liveAt=0,polling=false,liveMode="",liveDate="",holiday="",offAt={};
 const UP="#ff4d6d",DOWN="#19e6a1",reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;
 let D=null,si=0,kind="stock",pick=null,charts=[],last={},typer=null,dir=0,rng="d1",lastPick=null,LONG=null,longP=null;
 try{si=+localStorage.getItem("si")||0}catch(e){}
@@ -295,7 +295,9 @@ function renderGrid(anim){
     b.onclick=()=>{pick=st.s;renderDetail(true);pollLive()};
     g.append(b);
   });
-  $("#stamp").textContent=latest?(Date.now()-liveAt<60000?"即時 ":"最後更新 ")+new Date(latest).toLocaleTimeString("zh-TW",{hour12:false}):"";
+  $("#stamp").textContent=liveMode=="live"&&Date.now()-liveAt<60000?"即時 "+new Date(latest).toLocaleTimeString("zh-TW",{hour12:false})
+    :liveMode=="close"&&liveDate?"收盤價 "+(+liveDate.slice(5,7))+"/"+(+liveDate.slice(8,10))
+    :latest?"最後更新 "+new Date(latest).toLocaleTimeString("zh-TW",{hour12:false}):"";
   dir=0;
 }
 function renderDetail(anim){
@@ -359,14 +361,22 @@ document.addEventListener("keydown",e=>{
   if(e.target.tagName=="INPUT"||pick||$("#sheet").classList.contains("open"))return;
   if(e.key=="ArrowRight")go(si+1,1);else if(e.key=="ArrowLeft")go(si-1,-1);else if(e.key=="/"){e.preventDefault();openSheet();$("#q").focus()}
 });
-/* 盤中即時報價（富果 API 經 Cloudflare Worker）：只抓目前畫面上的個股，每 20 秒一次 */
+/* 報價時段（富果 API 經 Cloudflare Worker，只抓目前畫面上的個股）
+   開盤日 09:00–13:30：每 20 秒抓即時價
+   其他時段（盤前、盤後、週末、休市日）：顯示最新收盤價，每檔最多 10 分鐘抓一次；13:30 收盤後會再抓一次當日收盤 */
 const tpe=t=>new Date(t+8*3600e3);
 const sameDay=(a,b)=>tpe(a).toISOString().slice(0,10)===tpe(b).toISOString().slice(0,10);
-function marketOpen(){const d=tpe(Date.now()),w=d.getUTCDay(),m=d.getUTCHours()*60+d.getUTCMinutes();return w>=1&&w<=5&&m>=535&&m<=815}
+const todayStr=()=>tpe(Date.now()).toISOString().slice(0,10);
+const closeAt=()=>Date.parse(todayStr()+"T13:30:30+08:00");
+function marketOpen(){
+  const d=tpe(Date.now()),w=d.getUTCDay(),m=d.getUTCHours()*60+d.getUTCMinutes();
+  return w>=1&&w<=5&&m>=540&&m<810&&holiday!==todayStr();
+}
 function applyLive(){
   if(!D)return;
   for(const [s,l] of Object.entries(LIVE)){
-    const q=D.quotes[s];if(q&&(q.updated||0)>l.recv)continue;  // data.json 比這筆即時報價「抓取時間」還新才保留
+    const q=D.quotes[s];
+    if(q&&(q.updated||0)>l.recv&&!l.d)continue;  // 富果有標日期的報價最權威；沒有日期時才比較新舊
     D.quotes[s]={...(q||{series:[]}),...l,updated:l.t};
     const c=(D.charts||(D.charts={}))[s]||(D.charts[s]={});
     const d1=c.d1,lp=d1&&d1[d1.length-1];
@@ -374,14 +384,24 @@ function applyLive(){
   }
 }
 async function pollLive(){
-  if(!LIVE_URL||!D||polling||document.hidden||!marketOpen())return;
-  const set=new Set(itemsOf(sec(),kind).map(x=>x.s));if(pick)set.add(pick);
-  if(!set.size)return;
+  if(!LIVE_URL||!D||polling||document.hidden)return;
+  const open=marketOpen(),now=Date.now();
+  let syms=[...new Set([...itemsOf(sec(),kind).map(x=>x.s),...(pick?[pick]:[])])];
+  // 非交易時段：收盤價不會變，同一檔 10 分鐘內不重抓（但 13:30 收盤後一定補抓一次）
+  if(!open)syms=syms.filter(s=>!offAt[s]||now-offAt[s]>600000||(offAt[s]<closeAt()&&now>=closeAt()));
+  if(!syms.length)return;
   polling=true;
   try{
-    const r=await fetch(LIVE_URL+"/quotes?symbols="+[...set].join(","),{cache:"no-store"});
-    const j=await r.json();
-    if(j.quotes&&Object.keys(j.quotes).length){const now=Date.now();for(const [k,v] of Object.entries(j.quotes))LIVE[k]={...v,recv:now};liveAt=Date.now();applyLive();render(false)}
+    const r=await fetch(LIVE_URL+"/quotes?symbols="+syms.join(","),{cache:"no-store"});
+    const j=await r.json(),got=Object.entries(j.quotes||{});
+    if(got.length){
+      const today=todayStr(),dates=got.map(([,v])=>v.d).filter(Boolean);
+      // 平日盤中卻拿到舊日期的資料：今天休市
+      if(open&&dates.length&&dates.every(d=>d<today))holiday=today;
+      for(const [k,v] of got){LIVE[k]={...v,recv:now};if(!open)offAt[k]=now}
+      liveMode=marketOpen()?"live":"close";liveDate=dates.sort().pop()||"";liveAt=now;
+      applyLive();render(false);
+    }
   }catch(e){}
   polling=false;
 }
