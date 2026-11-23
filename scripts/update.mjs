@@ -77,7 +77,9 @@ async function quotesMIS() {
       { headers: { ...UA, Cookie: cookie, Referer: "https://mis.twse.com.tw/stock/index.jsp" } });
     for (const m of d.msgArray || []) {
       const y = num(m.y); if (y == null) continue;
-      const last = num(m.z) ?? y;
+      // 兩筆成交之間 z 會是 "-"：改用最佳買價／賣價／開盤價，最後才退回昨收
+      const first = (v) => num(String(v ?? "").split("_")[0]);
+      const last = num(m.z) ?? first(m.b) ?? first(m.a) ?? num(m.o) ?? y;
       out[m.c] = { price: last, prev: y, change: last - y, pct: ((last - y) / y) * 100, hi: num(m.h), lo: num(m.l) };
     }
     await sleep(300);

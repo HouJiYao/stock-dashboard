@@ -173,7 +173,7 @@ h3{margin:22px 0 4px;font:500 12px "JetBrains Mono",monospace;letter-spacing:.2e
 <script>
 const getData=()=>fetch("/data.json?t="+Date.now()).then(r=>r.json());//@GETDATA
 // 即時報價：部署 worker/ 之後，把網址填在這裡（結尾不要斜線），例如 https://stock-live.你的帳號.workers.dev
-const LIVE_URL="";
+const LIVE_URL="https://stock-live.hou0226.workers.dev";
 let LIVE={},liveAt=0,polling=false;
 const UP="#ff4d6d",DOWN="#19e6a1",reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;
 let D=null,si=0,kind="stock",pick=null,charts=[],last={},typer=null,dir=0,rng="d1",lastPick=null,LONG=null,longP=null;
@@ -353,7 +353,7 @@ function marketOpen(){const d=tpe(Date.now()),w=d.getUTCDay(),m=d.getUTCHours()*
 function applyLive(){
   if(!D)return;
   for(const [s,l] of Object.entries(LIVE)){
-    const q=D.quotes[s];if(q&&(q.updated||0)>=l.t)continue;
+    const q=D.quotes[s];if(q&&(q.updated||0)>l.recv)continue;  // data.json 比這筆即時報價「抓取時間」還新才保留
     D.quotes[s]={...(q||{series:[]}),...l,updated:l.t};
     const c=(D.charts||(D.charts={}))[s]||(D.charts[s]={});
     const d1=c.d1,lp=d1&&d1[d1.length-1];
@@ -368,7 +368,7 @@ async function pollLive(){
   try{
     const r=await fetch(LIVE_URL+"/quotes?symbols="+[...set].join(","),{cache:"no-store"});
     const j=await r.json();
-    if(j.quotes&&Object.keys(j.quotes).length){Object.assign(LIVE,j.quotes);liveAt=Date.now();applyLive();render(false)}
+    if(j.quotes&&Object.keys(j.quotes).length){const now=Date.now();for(const [k,v] of Object.entries(j.quotes))LIVE[k]={...v,recv:now};liveAt=Date.now();applyLive();render(false)}
   }catch(e){}
   polling=false;
 }
