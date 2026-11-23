@@ -212,11 +212,11 @@ function spark(p,up,anim){
   const pts=p.map((v,i)=>`${(i*dx).toFixed(1)},${(h-5-(v-mn)/(mx-mn||1)*(h-10)).toFixed(1)}`).join(" ");
   return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${c}" stop-opacity=".35"/><stop offset="1" stop-color="${c}" stop-opacity="0"/></linearGradient></defs><polygon class="${anim?"fade":""}" points="0,${h} ${pts} ${w},${h}" fill="url(#${id})"/><polyline class="${anim?"draw":""}" pathLength="1" points="${pts}" fill="none" stroke="${c}" stroke-width="2" stroke-linejoin="round"/></svg>`;
 }
-const RNG=[["d1","當日"],["d5","5日"],["m3","3個月"],["acc","累積"]];
+const RNG=[["d1","當日"],["d5","5日"],["m3","3個月"]];
 const fT={d1:t=>new Date(t).toLocaleTimeString("zh-TW",{hour:"2-digit",minute:"2-digit",hour12:false}),
   d5:t=>new Date(t).toLocaleString("zh-TW",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit",hour12:false}),
-  m3:t=>new Date(t).toLocaleDateString("zh-TW",{month:"numeric",day:"numeric"})};fT.acc=fT.d5;
-const ptsOf=(code,r)=>r=="acc"?D.quotes[code]?.series:(D.charts?.[code]?.[r]||LONG?.[code]?.[r]);
+  m3:t=>new Date(t).toLocaleDateString("zh-TW",{month:"numeric",day:"numeric"})};
+const ptsOf=(code,r)=>D.charts?.[code]?.[r]||LONG?.[code]?.[r];
 const needLong=(code,r)=>(r=="d5"||r=="m3")&&!D.charts?.[code]?.[r]&&LONG==null;
 const loadLong=()=>longP||(longP=fetch("/charts-long.json?t="+Date.now()).then(x=>x.json()).then(j=>LONG=j).catch(()=>LONG={}));
 function drawChart(anim){
@@ -233,7 +233,7 @@ function drawChart(anim){
       plugins:{legend:{display:false},tooltip:{filter:i=>i.datasetIndex===0,backgroundColor:"rgba(8,12,24,.95)",borderColor:"rgba(34,211,238,.5)",borderWidth:1,titleColor:"#9fb0cc",bodyColor:"#e6edf7"}},
       scales:{x:{ticks:{color:"#7d8aa5",maxTicksLimit:5},grid:{color:"rgba(255,255,255,.05)"}},y:{ticks:{color:"#7d8aa5"},grid:{color:"rgba(255,255,255,.05)"}}}}}));
 }
-const cardSeries=(code,q)=>{const d=D.charts?.[code]?.d1;return (d&&d.length>=2?d:q.series.slice(-80)).map(x=>x.p)};
+const cardSeries=(code,q)=>{const d=D.charts?.[code]?.d1;return d&&d.length>=2?d.map(x=>x.p):q.prev!=null?[q.prev,q.price]:[q.price]};
 
 function render(anim){
   renderNav(anim);renderHead();renderGrid(anim);
@@ -294,7 +294,6 @@ function renderDetail(anim){
     .map(([k,v])=>`<div><span>${k}</span><b>${v}</b></div>`).join("");
   const news=(f.news||[]).map(n=>`<li><a href="${esc(n.url)}" target="_blank" rel="noopener noreferrer">${esc(n.title)}</a><br><small>${esc(n.src)}${n.t?"・"+new Date(n.t).toLocaleDateString("zh-TW"):""}</small></li>`).join("")||"<li>暫無新聞資料</li>";
   if(code!==lastPick){rng="d1";lastPick=code}
-  if(!((ptsOf(code,rng)||[]).length>1)&&!needLong(code,rng))rng=(ptsOf(code,"acc")||[]).length>1?"acc":rng;
   const dr=$("#dr"),keep=dr.scrollTop;
   dr.innerHTML=`<div class="dh"><div><div class="sym">${code}${st.e?" ・ ETF":""}</div><h2>${esc(st.n)}</h2></div><button class="x" id="dx" aria-label="關閉">✕</button></div>
     ${q?(L=>`<div style="margin-top:14px"><span class="price ${u?"up":"down"}${L?" lim":""}" style="margin:0">${fmt(q.price)}</span> <span class="chg ${u?"up":"down"}">${u?"▲":"▼"} ${fmt(Math.abs(q.change))}（${fmt(Math.abs(q.pct))}%）</span></div>`)(limitOf(q,st.e)):""}
@@ -357,7 +356,7 @@ function applyLive(){
   for(const [s,l] of Object.entries(LIVE)){
     const q=D.quotes[s];
     if(q&&(q.updated||0)>l.recv&&!l.d)continue;  // 富果有標日期的報價最權威；沒有日期時才比較新舊
-    D.quotes[s]={...(q||{series:[]}),...l,updated:l.t};
+    D.quotes[s]={...(q||{}),...l,updated:l.t};
     const c=(D.charts||(D.charts={}))[s]||(D.charts[s]={});
     const d1=c.d1,lp=d1&&d1[d1.length-1];
     if(lp&&sameDay(lp.t,l.t)){if(l.t-lp.t>=60000)d1.push({t:l.t,p:l.price});else if(l.t>lp.t)lp.p=l.price}

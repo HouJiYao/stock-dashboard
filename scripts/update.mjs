@@ -173,8 +173,7 @@ const quotes = {};
 for (const { s } of ALL) {
   const old = prev.quotes?.[s];
   if (fresh[s]) {
-    const series = (old?.series || []).concat({ t: now, p: fresh[s].price }).slice(-400);
-    quotes[s] = { ...fresh[s], series, updated: now };
+    quotes[s] = { ...fresh[s], updated: now };
   } else if (old) quotes[s] = old;
 }
 
