@@ -99,9 +99,6 @@ svg{width:100%;height:100%;display:block}
 .kv div{border:1px solid var(--line);border-radius:10px;padding:8px 12px;background:rgba(255,255,255,.02)}
 .kv span{display:block;color:var(--mute);font-size:12px}
 .kv b{font:500 17px "JetBrains Mono",monospace}
-.ai{border-left:2px solid var(--vi);padding:2px 0 2px 14px;margin-top:6px;white-space:pre-wrap}
-.caret::after{content:"▍";color:var(--cy);animation:blink 1s steps(1) infinite}
-@keyframes blink{50%{opacity:0}}
 h3{margin:22px 0 4px;font:500 12px "JetBrains Mono",monospace;letter-spacing:.2em;color:var(--cy)}
 .news{list-style:none;padding:0;margin:0}
 .news li{padding:9px 0;border-top:1px solid var(--line);transition:padding-left .2s}
@@ -174,7 +171,7 @@ const getData=()=>fetch("/data.json?t="+Date.now()).then(r=>r.json());//@GETDATA
 const LIVE_URL="https://stock-live.hou0226.workers.dev";
 let LIVE={},liveAt=0,polling=false,liveMode="",liveDate="",holiday="",offAt={};
 const UP="#ff4d6d",DOWN="#19e6a1",reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;
-let D=null,si=0,kind="stock",pick=null,charts=[],last={},typer=null,dir=0,rng="d1",lastPick=null,LONG=null,longP=null;
+let D=null,si=0,kind="stock",pick=null,charts=[],last={},dir=0,rng="d1",lastPick=null,LONG=null,longP=null;
 try{si=+localStorage.getItem("si")||0}catch(e){}
 const $=s=>document.querySelector(s);
 const fmt=n=>n==null?"–":Number(n).toLocaleString("en-US",{maximumFractionDigits:2});
@@ -290,8 +287,8 @@ function renderGrid(anim){
 }
 function renderDetail(anim){
   const code=pick,st=findItem(code);if(!st)return;
-  const q=D.quotes[code],f=D.fundamentals?.[code]||{},a=D.analysis?.[code],u=q&&q.change>=0;
-  clearInterval(typer);charts.forEach(c=>c.destroy());charts=[];
+  const q=D.quotes[code],f=D.fundamentals?.[code]||{},u=q&&q.change>=0;
+  charts.forEach(c=>c.destroy());charts=[];
   const kv=(st.e?[["類型","ETF"],["前收盤",fmt(q?.prev)],["今日最高",fmt(q?.hi)],["今日最低",fmt(q?.lo)]]
     :[["本益比",fmt(f.pe)],["股價淨值比",fmt(f.pb)],["殖利率",f.yield==null?"–":fmt(f.yield)+"%"],["市值（TWD）",big(f.mcap)],["今日最高",fmt(q?.hi)],["今日最低",fmt(q?.lo)]])
     .map(([k,v])=>`<div><span>${k}</span><b>${v}</b></div>`).join("");
@@ -302,19 +299,14 @@ function renderDetail(anim){
   dr.innerHTML=`<div class="dh"><div><div class="sym">${code}${st.e?" ・ ETF":""}</div><h2>${esc(st.n)}</h2></div><button class="x" id="dx" aria-label="關閉">✕</button></div>
     ${q?(L=>`<div style="margin-top:14px"><span class="price ${u?"up":"down"}${L?" lim":""}" style="margin:0">${fmt(q.price)}</span> <span class="chg ${u?"up":"down"}">${u?"▲":"▼"} ${fmt(Math.abs(q.change))}（${fmt(Math.abs(q.pct))}%）</span></div>`)(limitOf(q,st.e)):""}
     <div class="seg rng" role="group" aria-label="走勢區間">${RNG.map(([k,n])=>`<button data-r="${k}" aria-pressed="${k==rng}" ${(ptsOf(code,k)||[]).length>1||needLong(code,k)?"":"disabled"}>${n}</button>`).join("")}</div><div class="chartbox"></div><div class="kv">${kv}</div>
-    <h3>AI ANALYSIS</h3><div class="ai"></div>
-    <h3>NEWS FEED</h3><ul class="news">${news}</ul>
-    <p class="note">${a?"分析更新於 "+new Date(a.updated).toLocaleString("zh-TW")+"。":""}AI 生成內容僅供參考，不構成投資建議。</p>`;
+    <h3>NEWS FEED</h3><ul class="news">${news}</ul>`;
   $("#detail").classList.add("open");document.body.classList.add("lock");
   $("#dx").onclick=closeDetail;
   dr.querySelectorAll(".rng button").forEach(b=>b.onclick=()=>{rng=b.dataset.r;dr.querySelectorAll(".rng button").forEach(x=>x.setAttribute("aria-pressed",x===b));{if(needLong(pick,rng)){$("#dr .chartbox").innerHTML='<p class="note">載入走勢資料…</p>';loadLong().then(()=>drawChart(true))}else drawChart(true)}});
   drawChart(anim);
-  const ai=dr.querySelector(".ai"),txt=a?a.text:(D.aiCodes&&!D.aiCodes.includes(code)?"此檔未納入 AI 分析（僅分析各產業市值前 3 名與 ETF）。":"今日分析尚未產生，將於下個交易日早上 8:30 更新。");
-  if(anim&&!reduce){let i=0;ai.classList.add("caret");typer=setInterval(()=>{ai.textContent=txt.slice(0,++i);if(i>=txt.length){clearInterval(typer);ai.classList.remove("caret")}},14)}
-  else ai.textContent=txt;
   if(anim)dr.scrollTop=0;else dr.scrollTop=keep;
 }
-function closeDetail(){pick=null;lastPick=null;clearInterval(typer);$("#detail").classList.remove("open");if(!$("#sheet").classList.contains("open"))document.body.classList.remove("lock")}
+function closeDetail(){pick=null;lastPick=null;$("#detail").classList.remove("open");if(!$("#sheet").classList.contains("open"))document.body.classList.remove("lock")}
 $("#scrim").onclick=closeDetail;
 
 /* 產業選單 + 搜尋 */
