@@ -174,7 +174,7 @@ for (const { s } of ALL) {
   const old = prev.quotes?.[s];
   if (fresh[s]) {
     quotes[s] = { ...fresh[s], updated: now };
-  } else if (old) quotes[s] = old;
+  } else if (old) { const { series, ...rest } = old; quotes[s] = rest; }   // 舊版留下的累積走勢不再保存
 }
 
 // 基本面 + 新聞（每日一次，或首次缺資料時）
@@ -186,13 +186,23 @@ if (ALL.some((x) => need(x.s))) {
   try { co = await getJSON("https://openapi.twse.com.tw/v1/opendata/t187ap03_L"); } catch (e) { console.error("t187ap03_L", e.message); }
 }
 const decode = (t) => t.replace(/<!\[CDATA\[|\]\]>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim();
+let newsFail = 0;   // 連續失敗次數：連續 8 檔失敗就視為被擋，其餘直接沿用舊新聞，避免整個排程卡到逾時
 async function news(st) {
+  if (newsFail >= 8) throw new Error("略過（新聞來源暫時被擋）");
+  try { const r = await newsOnce(st); newsFail = 0; return r; } catch (e) { newsFail++; throw e; }
+}
+async function newsOnce(st) {
   const url = `https://news.google.com/rss/search?q=${encodeURIComponent(st.s + " " + st.n)}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant`;
-  const xml = await (await fetch(url, { headers: UA })).text();
-  return [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].slice(0, 5).map((m) => {
+  await sleep(300);   // 放慢速度，避免被 Google 判定為大量請求而擋下
+  const res = await fetch(url, { headers: UA });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const xml = await res.text();
+  const items = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].slice(0, 5).map((m) => {
     const g = (tag) => { const r = m[1].match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`)); return r ? decode(r[1]) : ""; };
     return { title: g("title"), url: g("link"), src: g("source"), t: Date.parse(g("pubDate")) || null };
   });
+  if (!items.length) throw new Error("沒有新聞（可能被擋）");   // 丟錯讓呼叫端保留舊新聞，不會被清空
+  return items;
 }
 const fTotal = ALL.filter((x) => need(x.s)).length;
 let fDone = 0;

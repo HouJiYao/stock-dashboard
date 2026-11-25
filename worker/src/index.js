@@ -65,6 +65,39 @@ async function perSymbol(symbols, key) {
   return Object.fromEntries(symbols.filter((s) => cache.has(s)).map((s) => [s, cache.get(s).q]));
 }
 
+// 當日 5 分 K（富果），同一檔 60 秒內不重抓
+const candleCache = new Map();   // symbol -> { at, data }
+async function candles(symbol, key) {
+  const c = candleCache.get(symbol);
+  if (c && Date.now() - c.at < 60_000) return c.data;
+  const r = await fugle(`/intraday/candles/${symbol}?timeframe=5`, key);
+  if (r.status !== 200) return c?.data || null;
+  const j = JSON.parse(r.body);
+  const pts = (j.data || []).map((k) => ({ t: Date.parse(k.date), p: num(k.close) })).filter((x) => Number.isFinite(x.t) && x.p != null).sort((a, b) => a.t - b.t);
+  const data = { d: j.date || null, pts };
+  candleCache.set(symbol, { at: Date.now(), data });
+  return data;
+}
+
+// 新聞（Google 新聞 RSS），同一檔 30 分鐘內不重抓
+const newsCache = new Map();     // symbol -> { at, items }
+const decode = (t) => t.replace(/<!\[CDATA\[|\]\]>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").trim();
+async function news(symbol, name) {
+  const c = newsCache.get(symbol);
+  if (c && Date.now() - c.at < 30 * 60_000) return c.items;
+  const url = `https://news.google.com/rss/search?q=${encodeURIComponent(symbol + " " + name)}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant`;
+  const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+  if (!res.ok) return c?.items || null;
+  const xml = await res.text();
+  const items = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].slice(0, 5).map((m) => {
+    const g = (tag) => { const r = m[1].match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`)); return r ? decode(r[1]) : ""; };
+    return { title: g("title"), url: g("link"), src: g("source"), t: Date.parse(g("pubDate")) || null };
+  });
+  if (!items.length) return c?.items || null;   // 被擋或查無資料時不覆蓋舊結果
+  newsCache.set(symbol, { at: Date.now(), items });
+  return items;
+}
+
 function cors(req, env) {
   const origin = req.headers.get("Origin") || "";
   const allow = (env.ALLOW_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean);
@@ -85,6 +118,16 @@ export default {
       const s = (url.searchParams.get("symbol") || "2330").replace(/[^0-9A-Z]/gi, "");
       const [q, sn] = await Promise.all([fugle(`/intraday/quote/${s}`, key), fugle(`/snapshot/quotes/TSE`, key)]);
       return json({ quote: { status: q.status, body: q.body.slice(0, 1500) }, snapshot: { status: sn.status, body: sn.body.slice(0, 500) } }, 200, h);
+    }
+    const sym = (url.searchParams.get("symbol") || "").trim().toUpperCase();
+    if (url.pathname === "/candles") {
+      if (!/^[0-9A-Z]{4,6}$/.test(sym)) return json({ error: "symbol 格式錯誤" }, 400, h);
+      try { return json((await candles(sym, key)) || { d: null, pts: [] }, 200, h); } catch (e) { return json({ error: String(e.message || e) }, 502, h); }
+    }
+    if (url.pathname === "/news") {
+      if (!/^[0-9A-Z]{4,6}$/.test(sym)) return json({ error: "symbol 格式錯誤" }, 400, h);
+      const name = (url.searchParams.get("name") || "").slice(0, 30);
+      try { return json({ items: (await news(sym, name)) || [] }, 200, h); } catch (e) { return json({ error: String(e.message || e) }, 502, h); }
     }
     if (url.pathname !== "/quotes") return json({ ok: true, usage: "/quotes?symbols=2330,2454" }, 200, h);
 
