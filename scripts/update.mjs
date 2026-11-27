@@ -191,16 +191,22 @@ async function news(st) {
   if (newsFail >= 8) throw new Error("略過（新聞來源暫時被擋）");
   try { const r = await newsOnce(st); newsFail = 0; return r; } catch (e) { newsFail++; throw e; }
 }
+async function rssItems(url, defSrc) {
+  await sleep(300);   // 放慢速度，避免被判定為大量請求而擋下
+  try {
+    const res = await fetch(url, { headers: UA });
+    if (!res.ok) return [];
+    const xml = await res.text();
+    return [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].slice(0, 5).map((m) => {
+      const g = (tag) => { const r = m[1].match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`)); return r ? decode(r[1]) : ""; };
+      return { title: g("title"), url: g("link"), src: g("source") || defSrc, t: Date.parse(g("pubDate")) || null };
+    }).filter((x) => x.title && x.url);
+  } catch { return []; }
+}
+// 先找 Google 新聞，抓不到再改用 Yahoo 股市個股新聞
 async function newsOnce(st) {
-  const url = `https://news.google.com/rss/search?q=${encodeURIComponent(st.s + " " + st.n)}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant`;
-  await sleep(300);   // 放慢速度，避免被 Google 判定為大量請求而擋下
-  const res = await fetch(url, { headers: UA });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const xml = await res.text();
-  const items = [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].slice(0, 5).map((m) => {
-    const g = (tag) => { const r = m[1].match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`)); return r ? decode(r[1]) : ""; };
-    return { title: g("title"), url: g("link"), src: g("source"), t: Date.parse(g("pubDate")) || null };
-  });
+  let items = await rssItems(`https://news.google.com/rss/search?q=${encodeURIComponent(st.s + " " + st.n)}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant`, "");
+  if (!items.length) items = await rssItems(`https://tw.stock.yahoo.com/rss?s=${st.s}`, "Yahoo股市");
   if (!items.length) throw new Error("沒有新聞（可能被擋）");   // 丟錯讓呼叫端保留舊新聞，不會被清空
   return items;
 }
